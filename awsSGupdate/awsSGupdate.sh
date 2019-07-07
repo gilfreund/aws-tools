@@ -1,13 +1,15 @@
 #!/bin/bash
 # script to pull my current public IP address 
 # and add a rule to my EC2 security group allowing me SSH access 
-SGN=EC2
-SGID=$(/usr/local/bin/aws ec2 describe-security-groups --group-names EC2 | grep "SECURITYGROUPS" | awk -F'\t' '{print $3}')
-MYOLDIP=
+AWSOUTPUT=text
+AWSREGION=u-west-1
+AWSCMD="aws ec2 --output $AWSOUTPUT --region $AWSREGION"
+SECURITYGROUPNAME=EC2
+SECURITYGROUPID=$(/usr/local/bin/aws ec2 describe-security-groups --group-names $SECURITYGROUPNAME | grep "SECURITYGROUPS" | awk -F'\t' '{print $3}')
+
 MYNEWIP="$(curl -s v4.ifconfig.co)/32"
 
-MYOLDIP=/usr/local/bin/aws ec2 describe-security-groups --group-names $SGN | grep "Gil Home" | awk '{print $2}'
-
+MYOLDIP=/usr/local/bin/aws ec2 describe-security-groups --group-names $SGN | grep "Gil Home" | awk '{print $2}' \
 	--group-name $SGN \
 	--protocol tcp \
 	--port 22 \
