@@ -4,6 +4,15 @@
 AWSOUTPUT=text
 AWSREGION=u-west-1
 AWSCMD="aws ec2 --output $AWSOUTPUT --region $AWSREGION"
+SECURITYGROUPS=$(aws ec2 describe-security-groups --group-names --query "SecurityGroups[?IpPermissions[?IpRanges[?Description=='Joe home']]].[GroupId]")
+IFS=$'\n' read -r -a SECURITYGROUP -d '' <<< "$SECURITYGROUPS"
+ECHO Hey $SECURITYGROUP
+for i in "${SECURITYGROUP[@]}"
+do
+   SECURITYGROUP=$i
+   echo Hello "$i", "$SECURITYGROUP"
+done
+
 SECURITYGROUPNAME=EC2
 SECURITYGROUPID=$(/usr/local/bin/aws ec2 describe-security-groups --group-names $SECURITYGROUPNAME | grep "SECURITYGROUPS" | awk -F'\t' '{print $3}')
 
