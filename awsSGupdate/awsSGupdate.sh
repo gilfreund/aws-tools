@@ -1,35 +1,39 @@
 #!/bin/bash
-# script to pull my current public IP address 
-# and add a rule to my EC2 security group allowing me SSH access 
 AWSOUTPUT=text
-AWSREGION=u-west-1
+AWSREGION=eu-west-1
+DESCRIPTION="Joe home"
 AWSCMD="aws ec2 --output $AWSOUTPUT --region $AWSREGION"
-SECURITYGROUPS=$(aws ec2 describe-security-groups --group-names --query "SecurityGroups[?IpPermissions[?IpRanges[?Description=='Joe home']]].[GroupId]")
-IFS=$'\n' read -r -a SECURITYGROUP -d '' <<< "$SECURITYGROUPS"
-ECHO Hey $SECURITYGROUP
-for i in "${SECURITYGROUP[@]}"
-do
-   SECURITYGROUP=$i
-   echo Hello "$i", "$SECURITYGROUP"
-done
 
-SECURITYGROUPNAME=EC2
-SECURITYGROUPID=$(/usr/local/bin/aws ec2 describe-security-groups --group-names $SECURITYGROUPNAME | grep "SECURITYGROUPS" | awk -F'\t' '{print $3}')
 
+# Get old IP from AWS based on description
+MYOLDIP=$($AWSCMD describe-security-groups --group-names $SGN | grep "$DESCRIPTION" | awk '{print $2}' )
+# Get new IP from an external site and add mask
 MYNEWIP="$(curl -s v4.ifconfig.co)/32"
 
-MYOLDIP=/usr/local/bin/aws ec2 describe-security-groups --group-names $SGN | grep "Gil Home" | awk '{print $2}' \
-	--group-name $SGN \
-	--protocol tcp \
-	--port 22 \
 
-aws ec2 revoke-security-group-egress \
-	--group-id sg-1a2b3c4d \
-	--ip-permissions '[{"IpProtocol": "tcp", "FromPort": 80, "ToPort": 80, "IpRanges": [{"CidrIp": "10.0.0.0/16"}]}]'
+# SECURITYGROUPNAME=EC2
+# List of all SG matching the Description
+SECURITYGROUPS=$($AWSCMD describe-security-groups --query "SecurityGroups[?IpPermissions[?IpRanges[?Description=='$DESCRIPTION']]].[GroupId]")
+#Create array from the list of groups
+IFS=$'\n' read -r -a SECURITYGROUP -d '' <<< "$SECURITYGROUPS"
+# For each security group
+for i in "${SECURITYGROUP[@]}"
+do
+        SECURITYGROUP=$i
+        echo "Group $SECURITYGROUP"
+        $AWSCMD describe-security-groups --group-id $i | grep "DESCRIPTION"
+        #| awk -F'\t' '{print $3}'
+done
 
+exit 1
+$AWSCMD revoke-security-group-ingress \
+        --group-id $SECURITYGROUPID \
+        --protocol tcp \
+        --port 22 \
+        --cidr "$MYOLDIP"
 
-aws ec2 authorize-security-group-ingress \
-	--group-name $SGN \
-	--protocol tcp \
-	--port 22 \
-	--cidr $MYIP
+$AWSCMD authorize-security-group-ingress \
+        --group-id $SECURITYGROUPID \
+        --protocol tcp \
+        --port 22 \
+        --cidr $MYNEWIP
