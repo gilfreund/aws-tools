@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # User variablea
-AWSREGION=eu-west-1
+AWSREGION=<region>
 
 # system variables
 if [ -z "$USER" ]
@@ -25,7 +25,6 @@ then
 fi
 # Part 2: Create array from the list of groups and get a list of ortocols IP and Portsx)
 IFS=$'\n' read -r -a SECURITYGROUP -d '' <<< "$SECURITYGROUPS"
-# For each security group
 for i in "${SECURITYGROUP[@]}"
 do
         SECURITYGROUPID=$i
@@ -48,13 +47,14 @@ do
                 do
                         OLDIP=$(echo "$j" | awk '{printf $2}')
                         echo -e "$OLDIP\t$PROTOCOL\t$FROMPORT\t$TOPORT"
-#               $AWSCMD revoke-security-group-ingress \
-#               --group-id $SECURITYGROUPID \
-#               --ip-permissions IpProtocol=$PROTOCOL,FromPort=$FROMPORT,ToPort=$TOPORT,IpRanges="[{CidrIp=$OLDIP}]"
-
-#               $AWSCMD authorize-security-group-ingress \
-#               --group-id $SECURITYGROUPID \
-#               --ip-permissions IpProtocol=$PROTOCOL,FromPort=$FROMPORT,ToPort=$TOPORT,IpRanges="[{CidrIp=$NEWIP,Description=$DESCRIPTION}]"
+# Revoke existing rules
+                $AWSCMD revoke-security-group-ingress \
+                        --group-id $SECURITYGROUPID \
+                        --ip-permissions IpProtocol=$PROTOCOL,FromPort=$FROMPORT,ToPort=$TOPORT,IpRanges="[{CidrIp=$OLDIP}]"
+# Create new rule
+               $AWSCMD authorize-security-group-ingress \
+                        --group-id $SECURITYGROUPID \
+                        --ip-permissions IpProtocol=$PROTOCOL,FromPort=$FROMPORT,ToPort=$TOPORT,IpRanges="[{CidrIp=$NEWIP,Description=$DESCRIPTION}]"
                 done
         done
 done
