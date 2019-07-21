@@ -1,9 +1,10 @@
 #!/bin/bash
 
 # User variablea
-AWSREGION=<region>
+AWSREGION=eu-west-1
 
 # system variables
+OLDIFS=$IFS
 if [ -z "$USER" ]
 then
         echo "DESCRIPTION is not defined"
@@ -25,9 +26,8 @@ then
 fi
 # Part 2: Create array from the list of groups and get a list of ortocols IP and Portsx)
 IFS=$'\n' read -r -a SECURITYGROUP -d '' <<< "$SECURITYGROUPS"
-for i in "${SECURITYGROUP[@]}"
+for SECURITYGROUPID in "${SECURITYGROUP[@]}"
 do
-        SECURITYGROUPID=$i
         echo Security Group $SECURITYGROUP
         echo ================================
         PROTOCOLS=$($AWSCMD describe-security-groups --group-id $SECURITYGROUPID --query "SecurityGroups[?IpPermissions[?IpRanges[?Description=='$DESCRIPTION']]].IpPermissions[*].{a:IpProtocol,b:FromPort,c:ToPort}")
@@ -40,21 +40,23 @@ do
                 PROTOCOL=$(echo "$p" | awk '{print $1}')
                 FROMPORT=$(echo "$p" | awk '{print $2}')
                 TOPORT=$(echo "$p" | awk '{print $3}')
-                OLDIPS=$($AWSCMD describe-security-groups --group-id $SECURITYGROUPID  --query "SecurityGroups[?IpPermissions[?IpRanges[*]]].IpPermissions[*].{a:IpRanges[?Description=='$DESCRIPTION'].CidrIp}")
 # Part 3 - Get all IPs
-                IFS=$'\n' read -r -a OLDIPARRAY -d '' <<< "$OLDIPS"
-                for j in "${OLDIPARRAY[@]}"
+		#OLDIPS=$($AWSCMD describe-security-groups --group-id $SECURITYGROUPID --query "SecurityGroups[*].IpPermissions[?(IpProtocol=='$PROTOCOL' || FromPort=='$FROMPORT' || ToPort=='$TOPORT')].[IpRanges[?Description=='$DESCRIPTION'].CidrIp]")
+		#echo "OLDIPS $OLDIPS" >> ../test
+		#IFS=$'\n' read -r -a OLDIPSARRAY -d '' <<< $OLDIPS
+		#for OLDIP in "${OLDIPSARRAY[@]}"
+		for OLDIP in $($AWSCMD describe-security-groups --group-id $SECURITYGROUPID --query "SecurityGroups[*].IpPermissions[?(IpProtocol=='tcp' || FromPort=='$FROMPORT' || ToPort=='$TOPORT')].{IP:IpRanges[?Description=='$DESCRIPTION'].CidrIp}"| awk '{print $2}') 
                 do
-                        OLDIP=$(echo "$j" | awk '{printf $2}')
+			echo "OLD IP $OLDIP" >> ../test
                         echo -e "$OLDIP\t$PROTOCOL\t$FROMPORT\t$TOPORT"
 # Revoke existing rules
-                $AWSCMD revoke-security-group-ingress \
-                        --group-id $SECURITYGROUPID \
-                        --ip-permissions IpProtocol=$PROTOCOL,FromPort=$FROMPORT,ToPort=$TOPORT,IpRanges="[{CidrIp=$OLDIP}]"
+#                $AWSCMD revoke-security-group-ingress \
+#                        --group-id $SECURITYGROUPID \
+#                        --ip-permissions IpProtocol=$PROTOCOL,FromPort=$FROMPORT,ToPort=$TOPORT,IpRanges="[{CidrIp=$OLDIP}]"
 # Create new rule
-               $AWSCMD authorize-security-group-ingress \
-                        --group-id $SECURITYGROUPID \
-                        --ip-permissions IpProtocol=$PROTOCOL,FromPort=$FROMPORT,ToPort=$TOPORT,IpRanges="[{CidrIp=$NEWIP,Description=$DESCRIPTION}]"
+#               $AWSCMD authorize-security-group-ingress \
+#                        --group-id $SECURITYGROUPID \
+#                        --ip-permissions IpProtocol=$PROTOCOL,FromPort=$FROMPORT,ToPort=$TOPORT,IpRanges="[{CidrIp=$NEWIP,Description=$DESCRIPTION}]"
                 done
         done
 done
