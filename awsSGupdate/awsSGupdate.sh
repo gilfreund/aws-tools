@@ -14,7 +14,7 @@ AWSOUTPUT=text
 AWSCMD="aws ec2 --output $AWSOUTPUT --region $AWSREGION"
 # Get new IP from an external site and add mask
 NEWIP="$(curl -s v4.ifconfig.co)/32"
-USER="$(aws iam --output text get-user| awk '{printf $7}')"
+USER="$(aws iam get-user --query User.UserName)"
 DESCRIPTION="user:$USER"
 
 # Part 1: get a list of all SG matching the Description
