@@ -3,21 +3,8 @@
 # == Script Config ===================
 
 # The rule description is used to determine the rule that should be updated.
-
-USER="$(aws iam get-user --query User.UserName)"
-RULE_DESCRIPTION="user:$USER"
-SECURITYGROUPS=$(aws ec2 --output text describe-security-groups  --query "SecurityGroups[?IpPermissions[?IpRanges[?Description=='$RULE_DESCRIPTION']]].[GroupId]")
+RULE_DESCRIPTION=My-Rule-Description
 SECURITY_GROUP_NAME=My-Security-Group-Name
-
-if [[ $1 == "test" ]] ; then
-    echo USER $USER
-    echo RULE_DESCRIPTION $RULE_DESCRIPTION
-    echo SECURITYGROUPS $SECURITYGROUPS
-    echo SECURITY_GROUP_NAME $SECURITY_GROUP_NAME
-    aws --output text ec2 describe-security-groups --query "SecurityGroups[?IpPermissions[?IpRanges[?Description=='$RULE_DESCRIPTION']]].{A:GroupName,B:GroupId,C:IpPermissions[*].IpRanges[?Description=='$RULE_DESCRIPTION'].CidrIp,D:IpPermissions[0].IpProtocol,E:IpPermissions[0].FromPort,F:IpPermissions[0].ToPort}"
-    exit
-fi
-
 
 # ====================================
 
