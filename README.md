@@ -9,11 +9,11 @@ ecConnect [ *number* | random | *instanceID* ]
 
 Runnig without any parameters will show a list of available instances with a number. You can select the number from the list or: **0** for a reandom host, **x** to exit.
 
-**number** A number from the list of a vailable instances
+***number*** A number from the list of a vailable instances
 
 **random** A random host from the available instances
 
-**instanceId** The instancd ID from the available instances
+***instanceId*** The instancd ID from the available instances
 
 ## Requirments
 * aws cli configured
