@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+
+SSH_KEY=""
+# [-i identity_file]
+SSH_FORWARD=""
+# -X -L [bind_address:]port:host:hostport
+# -X -f -L [bind_address:]port:host:hostport
+SSH_USER=$(aws --output text  iam get-user --query User.UserName)
+TAG_KEY=Service
+TAG_VALUE=ComputeDevelopment
+
+function getInstances() {
+        aws --output text ec2 describe-instances \
+                --filters Name=instance-state-name,Values=running Name=tag:$TAG_KEY,Values=$TAG_VALUE \
+                --query "Reservations[*].Instances[*].[InstanceId,InstanceType,PublicIpAddress,PublicDnsName,Tags[?Key=='Name']|[0].Value]"
+}
+
+function connectTo() {
+        case $1 in
+                hostNumber)
+                        local hostNumber=$2
+                        ;;
+                hostId)
+                        local hostId=$2
+                        ;;
+                *)
+                        exit
+                        ;;
+        esac
+
+        local host=$1
+        local num=0
+                while IFS=$'\t' read InstanceId InstanceType PublicIpAddress PublicDnsName Name ; do
+                ((num=num+1))
+                if [[ $1 == hostNumber ]] && [[ $hostNumber -eq $num ]] ; then
+                        echo "you selected $hostNumber: $Name is $InstanceId (${InstanceType}) on $PublicDnsName (${PublicIpAddress})"
+                        break
+                elif [[ $1 == hostId ]] && [[ $hostId == $InstanceId ]] ; then
+                        echo "you selected $InstanceId: $Name (${InstanceType}) on $PublicDnsName (${PublicIpAddress})"
+                        break
+		else
+			echo ""
+                fi
+                done < <(getInstances)
+                ssh -tt $SSH_KEY $SSH_FORWARD ${SSH_USER}@${PublicIpAddress} < /dev/tty
+}
+
+if [[ $1 == "random" ]] ; then
+        while IFS=$'\t' read InstanceId ; do
+                ((num=num+1))
+        done < <(getInstances)
+        connectTo hostNumber $((1 + $RANDOM % $num))
+elif [[ $1 == i-* ]] ; then
+        connectTo hostId $1
+elif [[ $1 -gt 0 ]] ; then
+        connectTo hostNumber $1
+else
+        echo "0:  Any host (rendom selection)"
+        while IFS=$'\t' read InstanceId InstanceType PublicIpAddress PublicDnsName Name ; do
+                ((num=num+1))
+                echo "$num:  $Name is $InstanceId (${InstanceType}) on $PublicDnsName (${PublicIpAddress})"
+        done < <(getInstances)
+        echo "x:  Exit"
+        while true
+        do
+                read -p 'Select host (0 for a random host, x to exit): ' hostNum
+                if [[ $hostNum -gt $num ]] && [[ $hostNum != "x" ]] ; then
+                        echo "Enter a vaule between 0 and $num or x"
+                elif [[ $hostNum == "x" ]] ; then
+                        echo "goodbye"
+                        exit 0
+                else
+                        if [[ $hostNum -eq 0 ]] ; then
+                                connectTo hostNumber $((1 + $RANDOM % $num))
+                        else
+                                connectTo hostNumber $hostNum
+                        fi
+                        exit 0
+                fi
+        done
+fi
