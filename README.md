@@ -60,7 +60,10 @@ SSH_USER=$(aws --output text  iam get-user --query User.UserName)
 Update the security groups for your user with the current IP in your location. 
 
 ## Usage
-sgUpdat [ list ]
+sgUpdate [ list | listall | update ]
+* **list** List all ingress security group rules for you user
+* **listall** List all ingress security groups
+* **update** Update your users' security group rule with the current IP
 
 ## Requirments
 * [Bash](https://www.gnu.org/software/bash/)
@@ -68,7 +71,7 @@ sgUpdat [ list ]
 * [AWS CLI](https://aws.amazon.com/cli/)
 * [jq](https://stedolan.github.io/jq/) (Optional) 
   * The will makes the script work faster, as fewer aws cli requests are not needed)
-  * If jq is used, the supporting filter file is also required. 
+  * If jq is used, the supporting filter file is also required. The filter code is based on [Parse aws cli output security groups with JQ](https://stackoverflow.com/questions/26543318/parse-aws-cli-output-security-groups-with-jq/45704642#45704642) by [jq170727](https://stackoverflow.com/users/8379597/jq170727)
 * [aws iam user](https://aws.amazon.com/iam/) with permissions to read and update security group rules (you can limit the permissions to specific security groups and users), eg:
 ```json
 {
