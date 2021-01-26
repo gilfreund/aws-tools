@@ -1,11 +1,21 @@
 #!/usr/bin/env bash
 
-current_ip=$(curl --silent http://checkip.amazonaws.com/)
-iam_user=$(aws iam --output text get-user --query User.UserName)
-securityGroupsJson=$(aws --output json ec2 describe-security-groups)
 sgUpdateFilter="${0%/*}/sgUpdate.filter"
 tagPrefix="user"
 action=${1:-list}
+if [[ ! $action =~ list ]] && [[ ! $action == update ]] ; then
+	echo ""
+	echo "Usage: sgUpdate [ list | listall | update ]"
+	echo ""
+	echo -e "list\t List all ingress security group rules for your user"
+	echo -e "listall\t List all ingress security groups"
+	echo -e "update\t Update your users' security group rule with the current IP"
+	echo ""
+	exit 0
+fi
+current_ip=$(curl --silent http://checkip.amazonaws.com/)
+iam_user=$(aws iam --output text get-user --query User.UserName)
+securityGroupsJson=$(aws --output json ec2 describe-security-groups)
 
 function updateRule() {
 	local GroupId=$1
@@ -60,7 +70,7 @@ function ruleActionSelect() {
 }
 
 if command -v jq &>/dev/null && [[ -e $sgUpdateFilter ]] ; then 
-	while IFS=$'\t' read -r GroupId GroupName GroupDesc GroupVpc Direction IpProtocol FromPort ToPort CidrIP Description; do
+	while IFS=$'\t' read -r GroupId GroupName IpProtocol FromPort ToPort CidrIP Description; do
 		ruleActionSelect "$action" "${GroupId}" "$GroupName" "$IpProtocol" "$FromPort" "$ToPort" "${CidrIP%/*}" "$current_ip" "$Description" "$iam_user"
 	done < <(echo "$securityGroupsJson" | jq -M -r -f $sgUpdateFilter)
 else 
@@ -70,9 +80,7 @@ else
 				while IFS=$'\t' read -r IpProtocol FromPort ToPort IpRangesCount; do
 					for (( IpRange = 0 ; IpRange <= IpRangesCount ; IpRange++ )); do
 						while IFS=$'\t' read -r CidrIP Description ; do
-						set -x
 							ruleActionSelect "$action" "$GroupId" "$GroupName" "$IpProtocol" "$FromPort" "$ToPort" "${CidrIP%/*}" "$current_ip" "$Description" "$iam_user"
-						set +x
 						done < <(aws --output text ec2 describe-security-groups \
 							--group-ids "${GroupId}" \
 							--query "SecurityGroups[*].IpPermissions[${IpPermission}].IpRanges[${IpRange}]")

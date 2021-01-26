@@ -6,7 +6,7 @@ def ports:
 ;
 
 def tabella($g; $p; $dir; $ip; $desc):
-    [ $g.GroupId, $g.GroupName, $g.Description, $g.VpcId, $dir,
+    [ $g.GroupId, $g.GroupName, 
       $p.IpProtocol, $p.FromPort, $p.ToPort, $ip, $desc ]
 ;
 

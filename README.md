@@ -61,7 +61,7 @@ Update the security groups for your user with the current IP in your location.
 
 ## Usage
 sgUpdate [ list | listall | update ]
-* **list** List all ingress security group rules for you user
+* **list** List all ingress security group rules for yous user
 * **listall** List all ingress security groups
 * **update** Update your users' security group rule with the current IP
 
