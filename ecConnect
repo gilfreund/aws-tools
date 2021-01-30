@@ -3,7 +3,7 @@
 # shellcheck disable=SC1091
 source "${0%/*}"/aws.functions
 # shellcheck source=aws.vars
-source "${0%/*}"/aws.vars
+source "${0%/}".vars
 
 function getInstances() {
     aws --output text ec2 describe-instances \

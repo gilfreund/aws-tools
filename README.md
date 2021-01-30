@@ -1,15 +1,14 @@
 # aws
-scripts for AWS
-
+This are scripts I use to make my life easier in accessing and managing AWS
 ---
 
 # ecConnect
 A script to connect to and instance from a list in instances that are tagged as available for ssh connections.
 ## Usage
 
-ecConnect [ *number* | random | *instanceID* ]
+ecConnect [ *number* | random | *instanceID* | list ]
 
-Runnig without any parameters will show a list of available instances with a number. You can select the number from the list or: **0** for a reandom host, **x** to exit. eg:
+Running without any parameters will show a list of available instances with a number. You can select the number from the list or: **0** for a random host, **x** to exit. eg:
 ```
 $ ./ecConnect.sg
 0:  Any host (rendom selection)
@@ -20,9 +19,10 @@ x:  Exit
 Select host (0 for a random host, x to exit):
 ```
 
-* ***number*** A number from the list of a vailable instances
+* ***number*** A number from the list of a available instances
 * **random** A random host from the available instances
-* ***instanceId*** The instancd ID from the available instances
+* ***instanceId*** The instance ID from the available instances
+* ***list*** Returns a list of the available instances
 
 ## Requirments
 * [Bash](https://www.gnu.org/software/bash/)
@@ -39,12 +39,12 @@ Select host (0 for a random host, x to exit):
 }
 ```
 ## Configuration
-* Tag your instances with the tags used to identify them as ssh accesiable.e.g.
+* Tag your instances with the tags used to identify them as ssh accessible. e.g.
 ```shell
 TAG_KEY=access
 TAG_VALUE=ssh
 ```
-* Set the following variables will be used by ssh. Note that you need the paramater and value, and not just the vaule.
+* Set the following variables will be used by ssh. Note that you need the parameter and value, and not just the value.
 ```shell
 SSH_KEY="" # point to the ssh identity file [-i identity_file]
 SSH_FORWARD="" # Set port forwarding -X -L [bind_address:]port:host:hostport or -X -f -L [bind_address:]port:host:hostport
@@ -61,7 +61,7 @@ Update the security groups for your user with the current IP in your location.
 
 ## Usage
 sgUpdate [ list | listall | update ]
-* **list** List all ingress security group rules for yous user
+* **list** List all ingress security group rules for your user
 * **listall** List all ingress security groups
 * **update** Update your users' security group rule with the current IP
 
@@ -70,7 +70,7 @@ sgUpdate [ list | listall | update ]
 * [curl](https://curl.se/)
 * [AWS CLI](https://aws.amazon.com/cli/)
 * [jq](https://stedolan.github.io/jq/) (Optional) 
-  * The will makes the script work faster, as fewer aws cli requests are not needed)
+  * The will makes the script work faster, as fewer aws cli requests are needed - 3 instead of 7)
   * If jq is used, the supporting filter file is also required. The filter code is based on [Parse aws cli output security groups with JQ](https://stackoverflow.com/questions/26543318/parse-aws-cli-output-security-groups-with-jq/45704642#45704642) by [jq170727](https://stackoverflow.com/users/8379597/jq170727)
 * [aws iam user](https://aws.amazon.com/iam/) with permissions to read and update security group rules (you can limit the permissions to specific security groups and users), eg:
 ```json
