@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 
+# shellcheck source=aws.functions
+# shellcheck disable=SC1091
+source "${0%/*}"/aws.functions
 sgUpdateFilter="${0%/*}/sgUpdate.filter"
 tagPrefix="user"
 action=${1:-list}
-if [[ ! $action =~ list ]] && [[ ! $action == update ]] ; then
+if [[ ! $action =~ list ]] && [[ ! $action == update ]]; then
 	echo ""
 	echo "Usage: sgUpdate [ list | listall | update ]"
 	echo ""
@@ -14,8 +17,8 @@ if [[ ! $action =~ list ]] && [[ ! $action == update ]] ; then
 	exit 0
 fi
 current_ip=$(curl --silent http://checkip.amazonaws.com/)
-iam_user=$(aws iam --output text get-user --query User.UserName)
-securityGroupsJson=$(aws --output json ec2 describe-security-groups)
+iam_user=$(runAwsCommand iam --output text get-user --query User.UserName)
+securityGroupsJson=$(runAwsCommand --output json ec2 describe-security-groups)
 
 function updateRule() {
 	local GroupId=$1
@@ -26,17 +29,17 @@ function updateRule() {
 	local newCidrIP=$6
 	local Description=$7
 	echo "Updating ${GroupId} ${IpProtocol}: ${FromPort} to ${ToPort} from $oldCidrIP to $newCidrIP ($Description)"
-	aws ec2 authorize-security-group-ingress \
+	runAwsCommand ec2 authorize-security-group-ingress \
 		--group-id "$GroupId" \
 		--ip-permissions IpProtocol="$IpProtocol",FromPort="$FromPort",ToPort="$ToPort",IpRanges=[\{CidrIp="$newCidrIP",Description=\""$Description"\"\}]
-	aws ec2 revoke-security-group-ingress \
+	runAwsCommand ec2 revoke-security-group-ingress \
 		--group-id "$GroupId" \
 		--ip-permissions IpProtocol="$IpProtocol",FromPort="$FromPort",ToPort="$ToPort",IpRanges=[\{CidrIp=\""${oldCidrIP}"\"\}]
 }
 function padTableSpaces() {
 	fieldLength=$1
 	maxFieldLength=$2
-	for (( fieldPad = fieldLength ; fieldPad <= maxFieldLength ; fieldPad++ )); do
+	for ((fieldPad = fieldLength; fieldPad <= maxFieldLength; fieldPad++)); do
 		local fieldPadSpaces="$fieldPadSpaces "
 	done
 	echo "$fieldPadSpaces"
@@ -53,45 +56,51 @@ function ruleActionSelect() {
 	local Description=$9
 	local iam_user=${10}
 
-	if [[ $action =~ list ]] ; then
+	if [[ $action =~ list ]]; then
 		local GroupIdSpaces && GroupIdSpaces=$(padTableSpaces ${#GroupId} 21)
 		local GroupNameSpaces && GroupNameSpaces=$(padTableSpaces ${#GroupName} 10)
 		local oldCidrIPSpace && oldCidrIPSpace=$(padTableSpaces ${#oldCidrIP} 21)
-		if [[ $Description == "$tagPrefix:$iam_user" ]] || [[ $action == listall ]] ; then
+		if [[ $action == listall ]]; then
 			echo -e "$GroupId$GroupIdSpaces\t$GroupName$GroupNameSpaces\t$IpProtocol\t$FromPort\t$ToPort\t$oldCidrIP$oldCidrIPSpace\t$Description"
 		fi
-	elif [[ $action == update ]] && [[ $iam_user == "${Description##*:}" ]] && [[ $current_ip != "${CidrIP%/*}" ]] ; then
+		if [[ $action == list ]] && [[ $Description == "$tagPrefix:$iam_user" ]]; then
+			if [[ $oldCidrIP != "$newCidrIP" ]]; then
+				ipComment="(Need to update to $newCidrIP)"
+			else
+				ipComment="(No Update requirerd)"
+			fi
+			echo -e "$GroupId$GroupIdSpaces\t$GroupName$GroupNameSpaces\t$IpProtocol\t$FromPort\t$ToPort\t$oldCidrIP$oldCidrIPSpace\t$Description\t$ipComment"
+		fi
+	elif [[ $action == update ]] && [[ $iam_user == "${Description##*:}" ]] && [[ $current_ip != "${CidrIP%/*}" ]]; then
 		updateRule "$GroupId" "$IpProtocol" "$FromPort" "$ToPort" "$CidrIP" "$current_ip"/"${CidrIP##*/}" "$Description"
-	elif [[ $action == update ]] && [[ $iam_user == "${Description##*:}" ]] && [[ $current_ip == "${CidrIP%/*}" ]] ; then
+	elif [[ $action == update ]] && [[ $iam_user == "${Description##*:}" ]] && [[ $current_ip == "${CidrIP%/*}" ]]; then
 		echo "Keeping $GroupId$GroupIdSpaces $IpProtocol: $FromPort to $ToPort on $current_ip/${CidrIP##*/} ($Description)"
-	else
-		echo none
 	fi
 }
 
-if command -v jq &>/dev/null && [[ -e $sgUpdateFilter ]] ; then 
+if command -v jq &>/dev/null && [[ -e $sgUpdateFilter ]]; then
 	while IFS=$'\t' read -r GroupId GroupName IpProtocol FromPort ToPort CidrIP Description; do
 		ruleActionSelect "$action" "${GroupId}" "$GroupName" "$IpProtocol" "$FromPort" "$ToPort" "${CidrIP%/*}" "$current_ip" "$Description" "$iam_user"
 	done < <(echo "$securityGroupsJson" | jq -M -r -f $sgUpdateFilter)
-else 
-	while IFS=$'\t' read -r GroupId ; do
-		while IFS=$'\t' read -r IpPermissionsCount ; do
-			for (( IpPermission = 0 ; IpPermission <= IpPermissionsCount ; IpPermission++ )); do
+else
+	while IFS=$'\t' read -r GroupId; do
+		while IFS=$'\t' read -r IpPermissionsCount; do
+			for ((IpPermission = 0; IpPermission <= IpPermissionsCount; IpPermission++)); do
 				while IFS=$'\t' read -r IpProtocol FromPort ToPort IpRangesCount; do
-					for (( IpRange = 0 ; IpRange <= IpRangesCount ; IpRange++ )); do
-						while IFS=$'\t' read -r CidrIP Description ; do
+					for ((IpRange = 0; IpRange <= IpRangesCount; IpRange++)); do
+						while IFS=$'\t' read -r CidrIP Description; do
 							ruleActionSelect "$action" "$GroupId" "$GroupName" "$IpProtocol" "$FromPort" "$ToPort" "${CidrIP%/*}" "$current_ip" "$Description" "$iam_user"
-						done < <(aws --output text ec2 describe-security-groups \
+						done < <(runAwsCommand--output text ec2 describe-security-groups \
 							--group-ids "${GroupId}" \
 							--query "SecurityGroups[*].IpPermissions[${IpPermission}].IpRanges[${IpRange}]")
-					done	
-				done < <(aws --output text ec2 describe-security-groups \
+					done
+				done < <(runAwsCommand --output text ec2 describe-security-groups \
 					--group-ids "${GroupId}" \
 					--query "SecurityGroups[*].IpPermissions[${IpPermission}].[IpProtocol,FromPort,ToPort,length(IpRanges[*])]")
 			done
-		done < <(aws --output text ec2 describe-security-groups \
+		done < <(runAwsCommand --output text ec2 describe-security-groups \
 			--group-ids "${GroupId}" \
 			--query "SecurityGroups[?IpPermissions[?IpRanges[*]]].[length(IpPermissions[*])]")
-	done < <(aws --output text ec2 describe-security-groups \
+	done < <(runAwsCommand --output text ec2 describe-security-groups \
 		--query "SecurityGroups[?IpPermissions[?IpRanges[?Description!=\`null\`]|[?starts_with(Description \`$tagPrefix\`)]]].[GroupId]")
 fi

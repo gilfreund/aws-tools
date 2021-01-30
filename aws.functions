@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# vim:ft=sh
+
+# Add jitter to the aws command to avoid a situation where it might fail to API throttoling 
+# and returning 429 Too Many Requests 
+# see https://docs.aws.amazon.com/AWSEC2/latest/APIReference/throttling.html
+# and https://docs.aws.amazon.com/general/latest/gr/api-retries.html
+function runAwsCommand () {
+        local runCmd="$*"
+        local runJitter=0
+        local runCycle=0
+        local maxCycles=30
+        local runSuccessful="No"
+        while [[ $runSuccessful != "Yes" ]] && [[ $runCycle -le $maxCycles ]]; do 
+            # shellcheck disable=SC2086
+            if ! aws $runCmd ; then 
+                    local runCycle=$(( runCycle + 1 ))
+                    local runJitter=$(( RANDOM  % runCycle ))
+                    sleep $(( ( RANDOM % runCycle ) + runJitter ))
+            else
+                    local runSuccessful="Yes"
+            fi
+        done
+        if [[ $runSuccessful != "Yes" ]] && [[ $runCycle -ge $maxCycles ]]; then
+            echo "failed to excute:"
+            echo "aws $runCmd"
+            exit 1
+        fi
+}
