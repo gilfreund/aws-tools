@@ -25,6 +25,7 @@ Select host (0 for a random host, x to exit):
 * ***list*** Returns a list of the available instances
 
 ## Requirments
+* The aws.functions file
 * [Bash](https://www.gnu.org/software/bash/)
 * [AWS CLI](https://aws.amazon.com/cli/)
 * [ssh](https://www.openssh.com/) with a private key to connect to the Ec2 instance
@@ -39,6 +40,7 @@ Select host (0 for a random host, x to exit):
 }
 ```
 ## Configuration
+All user configurable variables are in the ecConnect.variables file
 * Tag your instances with the tags used to identify them as ssh accessible. e.g.
 ```shell
 TAG_KEY=access
@@ -49,8 +51,7 @@ TAG_VALUE=ssh
 SSH_KEY="" # point to the ssh identity file [-i identity_file]
 SSH_FORWARD="" # Set port forwarding -X -L [bind_address:]port:host:hostport or -X -f -L [bind_address:]port:host:hostport
 ```
-## Notes
-By default, the script uses the IAM username. Only usful if the IAM and Linux users are the same.
+* Set the used id connecting to the instance. By default, the script uses the IAM username, which is only useful if the IAM and Linux users are the same. 
 ```shell
 SSH_USER=$(aws --output text  iam get-user --query User.UserName)
 ```
@@ -66,6 +67,8 @@ sgUpdate [ list | listall | update ]
 * **update** Update your users' security group rule with the current IP
 
 ## Requirments
+* The aws.functions file
+* the ecConnect.vars file
 * [Bash](https://www.gnu.org/software/bash/)
 * [curl](https://curl.se/)
 * [AWS CLI](https://aws.amazon.com/cli/)
@@ -100,3 +103,9 @@ sgUpdate [ list | listall | update ]
     ]
 }
 ```
+
+# Support files
+## aws.functions
+This externalizes the aws command to a function in order to add jitter to the command to avoid a situation where it might fail to API throttling and returning 429 Too Many Requests. See:
+* https://docs.aws.amazon.com/AWSEC2/latest/APIReference/throttling.html
+* https://docs.aws.amazon.com/general/latest/gr/api-retries.html
