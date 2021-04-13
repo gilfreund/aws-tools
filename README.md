@@ -95,7 +95,7 @@ sgUpdate [ list | listall | update ]
         },
         {
             "Action": [
-                "ec2:DescribeSecurityGroups",
+                "ec2:DescribeSecurityGroups"
             ],
             "Effect": "Allow",
             "Resource": "*"
