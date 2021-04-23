@@ -13,7 +13,7 @@ function runAwsCommand () {
         local runSuccessful="No"
         while [[ $runSuccessful != "Yes" ]] && [[ $runCycle -le $maxCycles ]]; do 
             # shellcheck disable=SC2086
-            if ! aws $runCmd 2> /dev/null ; then 
+            if ! aws $runCmd 2> /dev/null; then 
                     local runCycle=$(( runCycle + 1 ))
                     local runJitter=$(( RANDOM  % runCycle ))
                     sleep $(( ( RANDOM % runCycle ) + runJitter ))
