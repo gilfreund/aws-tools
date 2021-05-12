@@ -7,12 +7,11 @@ source "${0%/}".vars
 
 function getInstances() {
     aws --output text ec2 describe-instances \
-    --filters Name=instance-state-name,Values=running Name=tag:"$TAG_KEY",Values="$TAG_VALUE" \
-    --query "Reservations[*].Instances[*].[InstanceId,InstanceType,PublicIpAddress,PublicDnsName,Tags[?Key==\"Name\"]|[0].Value]"
+    --filters Name=instance-state-name,Values=running Name=tag:"$TAG_KEY",Values="$TAG_VALUE"* \
+    --query "Reservations[*].Instances[*].[InstanceId,InstanceType,PublicIpAddress,PublicDnsName,Tags[?Key==\`Name\`]|[0].Value]"
 }
 
-function connectTo() {
-    local host=$1
+function connectTo() {    local host=$1
     local num=0
     
     case $host in
