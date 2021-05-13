@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# shellcheck source=aws.functions
+# shellcheck disable=SC1091
+source "${0%/*}"/aws.functions
+# shellcheck source=aws.vars
+source "${0%/}".vars
+# Set defaults
+NAMEPREFIX="ComputeDevelopment"
+PROJECT="unknown"
+INSTANCETYPE="r5d.large"
+LAUNCHTEMPLATE="lt-06040c9074848c8b7"
+OWNERTAG=$(runAwsCommand iam get-user --output text --query User.UserName)
+
+# Get subnet to use
+SUBNETNUM=$((1 + RANDOM % 3))
+SUBNETCOUNTER =0
+while IFS=$'\t' read -r SUBNETID; do
+  ((SUBNETCOUNTER  = SUBNETCOUNTER  + 1))
+  if [[ $SUBNETCOUNTER  -eq $SUBNETNUM ]] ; then
+    break
+  fi
+done < <(runAwsCommand ec2 describe-subnets \
+          --output text \
+          --filters Name=tag:Service,Values=Compute \
+          --query Subnets[].[SubnetId])
+
+# Usage output
+usage()
+{
+  echo "Usage: ${BASH_SOURCE[0]} [ -t | --type INSTANCETYPE ] [ -o | --owner OWNERTAG ] [ -p | --project PROJECT]
+        If unspcified:
+        INSTANCETYPE is r5d.large
+        OWNERTAG is iam user"
+  exit 2
+}
+
+# A Hack for MacOS incompatible getop
+if [[ $(sw_vers -productName) == macOS ]] ; then
+  if [[ -d /usr/local/opt/gnu-getopt/bin ]] ; then
+    PATH="/usr/local/opt/gnu-getopt/bin:$PATH"
+  else
+    echo you need to install gnu getopt
+    exit 1
+  fi
+fi
+
+# Get and check parameters
+ARGS=$(getopt --name ec2launch \
+              --options 't:o:p:' \
+              --longoptions 'type:,owner:,project' -- "$@")
+
+VALID_ARGUMENTS="$?"
+if [[ "$VALID_ARGUMENTS" -gt "0" ]]; then
+  usage
+fi
+eval "set -- $ARGS"
+while true; do
+    case $1 in
+      -t|--type)
+            INSTANCETYPE=${2}; shift 2;;
+      -o|--owner)
+            OWNERTAG=$2; shift 2;;
+      -p|--project)
+            PROJECT=$2; shift 2;;
+      --)  shift; break;;
+      *)   echo "option $1 is unknown" ; usage; exit 1;;           # error
+    esac
+done
+
+# Get up-to-date Amazon Linux image id
+IMAGEID=$(runAwsCommand ec2 describe-images \
+  --owners amazon \
+  --filters 'Name=name,Values=amzn2-ami-hvm-2.0.????????.?-x86_64-gp2' 'Name=state,Values=available' \
+  --owners amazon \
+  --query 'reverse(sort_by(Images, &CreationDate))[:1].[ImageId]')
+# shellcheck disable=SC2102
+runAwsCommand ec2 run-instances \
+  --launch-template LaunchTemplateId=$LAUNCHTEMPLATE,Version=38 \
+  --image-id "$IMAGEID" \
+  --instance-type "$INSTANCETYPE" \
+  --network-interfaces AssociatePublicIpAddress=true,DeviceIndex=0,SubnetId="$SUBNETID" \
+  --tag-specifications \
+  	"ResourceType=instance,Tags=[{Key=Name,Value=$NAMEPREFIX-$OWNERTAG},{Key=Creator,Value=$OWNERTAG},{Key=Owner,Value=$OWNERTAG},{Key=Project,Value=$PROJECT},{Key=Environment,Value=Development},{Key=init:env,Value=dev}]" \
+  	"ResourceType=volume,Tags=[{Key=Name,Value=$NAMEPREFIX-$OWNERTAG},{Key=Owner,Value=$OWNERTAG},{Key=Project,Value=$PROJECT},{Key=Environment,Value=Development},{Key=init:env,Value=dev}]" \
+  --query Instances[*].[InstanceId] 
