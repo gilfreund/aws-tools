@@ -6,9 +6,9 @@ source "${0%/*}"/aws.functions
 source "${0%/}".vars
 
 function getInstances() {
-    aws --output text ec2 describe-instances \
-    --filters Name=instance-state-name,Values=running Name=tag:"$TAG_KEY",Values="$TAG_VALUE"* \
-    --query "Reservations[*].Instances[*].[InstanceId,InstanceType,PublicIpAddress,PublicDnsName,Tags[?Key==\`Name\`]|[0].Value]"
+    runAwsCommand --output text ec2 describe-instances \
+    --filters Name=instance-state-name,Values=running Name=tag:"$TAG_KEY",Values="$TAG_VALUE" \
+    --query "Reservations[*].Instances[*].[InstanceId,InstanceType,PublicIpAddress,PublicDnsName,Tags[?Key=='Name']|[0].Value]"
 }
 
 function connectTo() {    local host=$1
@@ -33,7 +33,7 @@ function connectTo() {    local host=$1
             echo ""
         fi
     done < <(getInstances)
-    ssh -tt $SSH_KEY $SSH_FORWARD "$SSH_USER"@"$PublicIpAddress" </dev/tty
+    ssh -tt "$SSH_KEY" "$SSH_FORWARD" "$SSH_USER"@"$PublicIpAddress" </dev/tty
 }
 
 if [[ -z $1 ]]; then
