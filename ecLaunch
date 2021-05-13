@@ -13,7 +13,7 @@ OWNERTAG=$(runAwsCommand iam get-user --output text --query User.UserName)
 
 # Get subnet to use
 SUBNETNUM=$((1 + RANDOM % 3))
-SUBNETCOUNTER =0
+SUBNETCOUNTER=0
 while IFS=$'\t' read -r SUBNETID; do
   ((SUBNETCOUNTER  = SUBNETCOUNTER  + 1))
   if [[ $SUBNETCOUNTER  -eq $SUBNETNUM ]] ; then
