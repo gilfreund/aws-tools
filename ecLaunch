@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# shellcheck source=aws.functions
-# shellcheck disable=SC1091
+# # shellcheck source=./aws.functions
 source "${0%/*}"/aws.functions
-# shellcheck source=aws.vars
+# # shellcheck source=./ecLunch.vars
 source "${0%/}".vars
-# Set defaults
-NAMEPREFIX="ComputeDevelopment"
-PROJECT="unknown"
-INSTANCETYPE="r5d.large"
-LAUNCHTEMPLATE="lt-06040c9074848c8b7"
-OWNERTAG=$(runAwsCommand iam get-user --output text --query User.UserName)
 
-# Get subnet to use
-SUBNETNUM=$((1 + RANDOM % 3))
+OWNERTAG=$(runAwsCommand iam get-user \
+            --output text \
+            --query User.UserName)
+# Get a subnet to use
 SUBNETCOUNTER=0
+SUBNETCOUNTERMAX=$(runAwsCommand ec2 describe-subnets \
+          --output text \
+          --filters Name=tag:$SUBNETTAGNAME,Values=$SUBNETTAGVALUE \
+          --query Subnets[].[SubnetId] \| wc -l)
+SUBNETNUM=$((1 + RANDOM % SUBNETCOUNTERMAX))
 while IFS=$'\t' read -r SUBNETID; do
   ((SUBNETCOUNTER  = SUBNETCOUNTER  + 1))
   if [[ $SUBNETCOUNTER  -eq $SUBNETNUM ]] ; then
@@ -21,7 +21,7 @@ while IFS=$'\t' read -r SUBNETID; do
   fi
 done < <(runAwsCommand ec2 describe-subnets \
           --output text \
-          --filters Name=tag:Service,Values=Compute \
+          --filters Name=tag:$SUBNETTAGNAME,Values=$SUBNETTAGVALUE \
           --query Subnets[].[SubnetId])
 
 # Usage output
