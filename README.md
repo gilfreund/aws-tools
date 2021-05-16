@@ -40,7 +40,7 @@ Select host (0 for a random host, x to exit):
 }
 ```
 ## Configuration
-All user configurable variables are in the ecConnect.variables file
+All user configurable variables are in the ecConnect.var file
 * Tag your instances with the tags used to identify them as ssh accessible. e.g.
 ```shell
 TAG_KEY=access
@@ -66,7 +66,7 @@ sgUpdate [ list | listall | update ]
 * **listall** List all ingress security groups
 * **update** Update your users' security group rule with the current IP
 
-## Requirments
+## Requirements
 * The aws.functions file
 * the ecConnect.vars file
 * [Bash](https://www.gnu.org/software/bash/)
@@ -104,8 +104,46 @@ sgUpdate [ list | listall | update ]
 }
 ```
 
+
+# ecLaunch
+Launch a new instance based on a template with a few override 
+
+## Usage
+ecLaunch [ -t | --type INSTANCETYPE ] [ -o | --owner OWNERTAG ] [ -p | --project PROJECT]
+
+-t | --type INSTANCETYPE    AWS ec2 Instance type
+-o | --owner OWNERTAG       An owner tag, used for accounting
+-p | --project PROJECT      A Project tag, used to accounting
+
+## Requirements
+* The aws.functions file
+* the ecLaunch.vars file
+* [Bash](https://www.gnu.org/software/bash/)
+* [curl](https://curl.se/)
+* [AWS CLI](https://aws.amazon.com/cli/)
+* [aws iam user](https://aws.amazon.com/iam/) with access to launch ec2 instance and update tags
+* The subnets that are available for the instance shout be tagged, and the tags name and value specified ecLaunch.vars
+
+Launching with no parameters will launch based on the parameters set in ecLaunch.vars
+
+## Configuration
+All user configurable variables are in the ecLaunch.var file
+```bash
+# instance type and launch template 
+export INSTANCETYPE="r5d.large"
+export LAUNCHTEMPLATE="lt-06040c9074848c8b7"
+# Instance and volume tagging 
+export NAMEPREFIX="ComputeDevelopment"
+export PROJECT="unknown"
+# Subnet tags for usable subnets
+export SUBNETTAGNAME="Service"
+export SUBNETTAGVALUE="Compute"
+```
+
 # Support files
 ## aws.functions
 This externalizes the aws command to a function in order to add jitter to the command to avoid a situation where it might fail to API throttling and returning 429 Too Many Requests. See:
 * https://docs.aws.amazon.com/AWSEC2/latest/APIReference/throttling.html
 * https://docs.aws.amazon.com/general/latest/gr/api-retries.html
+
+
