@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=1090
 # # shellcheck source=./aws.functions
 source "${0%/*}"/aws.functions
 # # shellcheck source=./ecLunch.vars
