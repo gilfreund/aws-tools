@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 
-# shellcheck source=aws.functions
-# shellcheck disable=SC1091
+# shellcheck source=./aws.functions
 source "${0%/*}"/aws.functions
 sgUpdateFilter="${0%/*}/sgUpdate.filter"
 tagPrefix="user"

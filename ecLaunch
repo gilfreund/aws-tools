@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # shellcheck disable=2086
 # Quotes and aws command do not mix well
-# shellcheck disable=1090 - does not seem to work in VC
-# # shellcheck source=./aws.functions
+# shellcheck source=./aws.functions
 source "${0%/*}"/aws.functions
-# # shellcheck source=./ecLunch.vars
+# shellcheck source=./ecLaunch.vars
 source "${0%/}".vars
 
 # Get a subnet to use
