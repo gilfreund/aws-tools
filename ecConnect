@@ -10,7 +10,8 @@ function getInstances() {
     --query "Reservations[*].Instances[*].[InstanceId,InstanceType,PublicIpAddress,PublicDnsName,Tags[?Key=='Name']|[0].Value]"
 }
 
-function connectTo() {    local host=$1
+function connectTo() {
+    local host=$1
     local num=0
     
     case $host in
@@ -32,7 +33,17 @@ function connectTo() {    local host=$1
             echo ""
         fi
     done < <(getInstances)
-    ssh -tt "$SSH_KEY" "$SSH_FORWARD" "$SSH_USER"@"$PublicIpAddress" </dev/tty
+    if [[ -n "$SSH_KEY" ]] ; then
+        PARAMS="$SSH_KEY"
+    fi
+    if [[ -n "$SSH_FORWARD" ]] ; then
+        PARAMS="$PARAMS $SSH_KEY"
+    fi
+    if [[ -n $PARAMA ]] ; then
+        ssh -tt "$PARAMS" "$SSH_USER"@"$PublicIpAddress" </dev/tty
+    else
+        ssh -tt "$SSH_USER"@"$PublicIpAddress" </dev/tty
+    fi 
 }
 
 if [[ -z $1 ]]; then
