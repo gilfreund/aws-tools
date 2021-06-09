@@ -40,7 +40,7 @@ Select host (0 for a random host, x to exit):
 }
 ```
 ## Configuration
-All user configurable variables are in the ecConnect.var file
+All user configurable variables are in the ecConnect.vars file
 * Tag your instances with the tags used to identify them as ssh accessible. e.g.
 ```shell
 TAG_KEY=access
@@ -127,7 +127,7 @@ ecLaunch [ -t | --type INSTANCETYPE ] [ -o | --owner OWNERTAG ] [ -p | --project
 Launching with no parameters will launch based on the parameters set in ecLaunch.vars
 
 ## Configuration
-All user configurable variables are in the ecLaunch.var file
+All user configurable variables are in the ecLaunch.vars file
 ```bash
 # instance type and launch template 
 export INSTANCETYPE="r5d.large"
