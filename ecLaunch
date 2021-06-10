@@ -2,9 +2,14 @@
 # shellcheck disable=2086
 # Quotes and aws command do not mix well
 # shellcheck source=./aws.functions
-source "${0%/*}"/aws.functions
+source ${0%/*}/aws.functions
 # shellcheck source=./ecLaunch.vars
-source "${0%/}".vars
+VARS=${0%/}.vars
+source $VARS
+if [[ -e $VARS.local ]] ; then
+  source $VARS.local
+fi
+
 
 # Get a subnet to use
 SUBNETCOUNTER=0

@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 
+# shellcheck disable=2086
+# Quotes and aws command do not mix well
 # shellcheck source=./aws.functions
-source "${0%/*}"/aws.functions
+source ${0%/*}/aws.functions
 sgUpdateFilter="${0%/*}/sgUpdate.filter"
 tagPrefix="user"
 action=${1:-list}

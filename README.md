@@ -69,6 +69,7 @@ sgUpdate [ list | listall | update ]
 ## Requirements
 * The aws.functions file
 * the ecConnect.vars file
+* (optional) a ecConnect.vars.local file
 * [Bash](https://www.gnu.org/software/bash/)
 * [curl](https://curl.se/)
 * [AWS CLI](https://aws.amazon.com/cli/)
@@ -118,6 +119,7 @@ ecLaunch [ -t | --type INSTANCETYPE ] [ -o | --owner OWNERTAG ] [ -p | --project
 ## Requirements
 * The aws.functions file
 * the ecLaunch.vars file
+* (optional) a ecLaunch.vars.local file
 * [Bash](https://www.gnu.org/software/bash/)
 * [curl](https://curl.se/)
 * [AWS CLI](https://aws.amazon.com/cli/)
