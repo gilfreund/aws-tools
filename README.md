@@ -40,16 +40,27 @@ Select host (0 for a random host, x to exit):
 }
 ```
 ## Configuration
-All user configurable variables are in the ecConnect.vars file
+Default configurable variables are in the ecConnect.vars file
 * Tag your instances with the tags used to identify them as ssh accessible. e.g.
-```shell
-TAG_KEY=access
-TAG_VALUE=ssh
+```bash
+#!/usr/bin/env bash
+# vim:ft=sh
+export SSH_KEY=""
+# [-i identity_file]
+export SSH_FORWARD=""
+# -X -L [bind_address:]port:host:hostport
+# -X -f -L [bind_address:]port:host:hostport
+SSH_USER=$(runAwsCommand --output text iam get-user --query User.UserName)
+export SSH_USER
+export TAG_KEY=Name
+export TAG_VALUE="ComputeDevelopment*"
 ```
-* Set the following variables will be used by ssh. Note that you need the parameter and value, and not just the value.
-```shell
-SSH_KEY="" # point to the ssh identity file [-i identity_file]
-SSH_FORWARD="" # Set port forwarding -X -L [bind_address:]port:host:hostport or -X -f -L [bind_address:]port:host:hostport
+You can overwrite the values in ecConnect.vars by creating an ecConnect.vars.local file with your own parameters that will overwrite the the values in ecConnect.vars
+```bash
+# Use the ec2-user user and key
+SSH_USER="ec2-user"
+export SSH_USER
+export SSH_KEY="~/.ssh/ec2-user.key"
 ```
 * Set the used id connecting to the instance. By default, the script uses the IAM username, which is only useful if the IAM and Linux users are the same. 
 ```shell
@@ -141,7 +152,13 @@ export PROJECT="unknown"
 export SUBNETTAGNAME="Service"
 export SUBNETTAGVALUE="Compute"
 ```
-
+You can overwrite the values in ecLaunch.vars by creating an ecLaunch.vars.local file with your own parameters that will overwrite the the values in ecLaunch.vars
+```bash
+# My Templates
+export LAUNCHTEMPLATE="lt-06040c9074848c8b7"
+# My default project
+export PROJECT="stuff"
+```
 # Support files
 ## aws.functions
 This externalizes the aws command to a function in order to add jitter to the command to avoid a situation where it might fail to API throttling and returning 429 Too Many Requests. See:
