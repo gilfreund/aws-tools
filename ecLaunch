@@ -91,6 +91,6 @@ runAwsCommand ec2 run-instances \
   --instance-type $INSTANCETYPE \
   --network-interfaces AssociatePublicIpAddress=true,DeviceIndex=0,SubnetId=$SUBNETID \
   --tag-specifications \
-  	"ResourceType=instance,Tags=[{Key=Name,Value=$NAMEPREFIX-$OWNERTAG},{Key=Creator,Value=$OWNERTAG},{Key=Owner,Value=$OWNERTAG},{Key=Project,Value=$PROJECT},{Key=init:env,Value=prod}]" \
-  	"ResourceType=volume,Tags=[{Key=Name,Value=$NAMEPREFIX-$OWNERTAG},{Key=Owner,Value=$OWNERTAG},{Key=Project,Value=$PROJECT},{Key=init:env,Value=dev}]" \
+  	"ResourceType=instance,Tags=[{Key=Name,Value=$NAMEPREFIX-$OWNERTAG},{Key=Creator,Value=$OWNERTAG},{Key=Owner,Value=$OWNERTAG},{Key=Project,Value=$PROJECT}$MORETAGS]" \
+  	"ResourceType=volume,Tags=[{Key=Name,Value=$NAMEPREFIX-$OWNERTAG},{Key=Owner,Value=$OWNERTAG},{Key=Project,Value=$PROJECT}$MORETAGS]" \
   --query Instances[*].[InstanceId] 
