@@ -19,7 +19,7 @@ fi
 
 if [[ -z $AVAILABILITY_ZONE ]]; then 
 	AVAILABILITY_ZONE=$(curl \
-                --connect-timeout 1 \
+                --max-time 1 \
                 --silent http://169.254.169.254/latest/meta-data/placement/availability-zone)
 	export AVAILABILITY_ZONE
 fi
