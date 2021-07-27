@@ -9,13 +9,17 @@ source $VARS
 if [[ -e $VARS.local ]] ; then
   source $VARS.local
 fi
+if [[ -e $HOME/.aws-tools/${VARS##*/}.local ]] ; then
+  source $HOME/.aws-tools/${VARS##*/}.local
+fi
 
 # Usage output
 usage() {
-  echo "Usage: ${BASH_SOURCE[0]} [ -t | --type INSTANCETYPE ] [ -o | --owner OWNERTAG ] [ -p | --project PROJECT]
+  echo "Usage: ${BASH_SOURCE[0]} [ -t | --type INSTANCETYPE ] [ -o | --owner OWNERTAG ] [ -p | --project PROJECT] [ -a | --ami AMI ]
         If unspcified:
         INSTANCETYPE is r5d.large
-        OWNERTAG is iam user"
+        OWNERTAG is iam user
+        AMI is the default Amazon Linux AMI"
   exit 2
 }
 
@@ -31,8 +35,8 @@ fi
 
 # Get and check parameters
 ARGS=$(getopt --name ec2launch \
-              --options 't:o:p:' \
-              --longoptions 'type:,owner:,project' -- "$@")
+              --options 't:o:p:a:' \
+              --longoptions 'type:,owner:,project:,ami:' -- "$@")
 
 VALID_ARGUMENTS="$?"
 if [[ "$VALID_ARGUMENTS" -gt "0" ]]; then
@@ -47,6 +51,8 @@ while true; do
             OWNERTAG=$2; shift 2;;
       -p|--project)
             PROJECT=$2; shift 2;;
+      -a|--ami)
+            IMAGEID=$2; shift 2;;
       --)  shift; break;;
       *)   echo "option $1 is unknown" ; usage; exit 1;;           # error
     esac
@@ -77,10 +83,12 @@ if [[ -z $OWNERTAG ]] ; then
 fi
 
 # Get up-to-date Amazon Linux image id
-IMAGEID=$(runAwsCommand ec2 describe-images \
-    --owners amazon \
-    --filters 'Name=name,Values=amzn2-ami-hvm-2.0.????????.?-x86_64-gp2' 'Name=state,Values=available' \
-    --query 'reverse(sort_by(Images,&CreationDate))[:1].[ImageId]')
+if [[ -z $IMAGEID ]]; then
+  IMAGEID=$(runAwsCommand ec2 describe-images \
+      --owners amazon \
+      --filters 'Name=name,Values=amzn2-ami-hvm-2.0.????????.?-x86_64-gp2' 'Name=state,Values=available' \
+      --query 'reverse(sort_by(Images,&CreationDate))[:1].[ImageId]')
+fi
 if [[ -n $LAUNCHTEMPLATEVERSION ]]; then
   LAUNCHTEMPLATEVERSION=",Version=$LAUNCHTEMPLATEVERSION"
 fi

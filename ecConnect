@@ -9,6 +9,9 @@ source $VARS
 if [[ -e $VARS.local ]] ; then
   source $VARS.local
 fi
+if [[ -e $HOME/.aws-tools/${VARS##*/}.local ]] ; then
+  source $HOME/.aws-tools/${VARS##*/}.local
+fi
 
 function getInstances() {
     runAwsCommand --output text ec2 describe-instances \
