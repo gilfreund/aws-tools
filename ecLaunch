@@ -86,10 +86,51 @@ fi
 
 # Get up-to-date Amazon Linux image id
 if [[ -z $IMAGEID ]]; then
-  IMAGEID=$(runAwsCommand ec2 describe-images \
-      --owners amazon \
-      --filters 'Name=name,Values=amzn2-ami-hvm-2.0.????????.?-x86_64-gp2' 'Name=state,Values=available' \
-      --query 'reverse(sort_by(Images,&CreationDate))[:1].[ImageId]')
+  case  ${INSTANCETYPE%.*} in
+    t4g|m6g|a1|c7g|c6g|c6gn|r6g|x2gd|im4gn|is4gen)
+      echo "Launching arm64 Instance"
+      IMAGEID=$(runAwsCommand ssm get-parameters \
+        --names /aws/service/ecs/optimized-ami/amazon-linux-2/arm64/recommended/image_id \
+        --query "Parameters[0].Value")
+      ;;
+    p4|p3|p2|g5|g5dn|g3)
+      # X86 + GPU
+      echo "Launching x86_64 with GPU Instance"
+      IMAGEID=$(runAwsCommand ssm get-parameters \
+        --names /aws/service/ecs/optimized-ami/amazon-linux-2/gpu/recommended/image_id \
+        --query "Parameters[0].Value")
+      ;;
+    f1)
+      #FPGA
+      echo "No Ami for FPGA"
+      ;;
+    vt1)
+      #Media accelerator
+      echo "No Ami for media accelerator"
+      ;;
+    g5ad)
+      #AMD GPU
+      echo "No AMI for AMD GPU"
+      ;;
+    g5g)
+      # ARM + GPU
+      echo "No AMI for arm64 and GPU"
+     ;;
+    dl1|trn1|inf1)
+      # AWS ML chips
+      echo "Launching Inferna Instance"
+      IMAGEID=$(runAwsCommand ssm get-parameters \
+        --names /aws/service/ecs/optimized-ami/amazon-linux-2/inf/recommended/image_id \
+        --query "Parameters[0].Value")
+      ;;
+    *)
+      echo "Launching x86_64 AMI"
+      IMAGEID=$(runAwsCommand ec2 describe-images \
+          --owners amazon \
+          --filters 'Name=name,Values=amzn2-ami-hvm-2.0.????????.?-x86_64-gp2' 'Name=state,Values=available' \
+          --query 'reverse(sort_by(Images,&CreationDate))[:1].[ImageId]')
+      ;;
+  esac
 fi
 if [[ -n $LAUNCHTEMPLATEVERSION ]]; then
   LAUNCHTEMPLATEVERSION=",Version=$LAUNCHTEMPLATEVERSION"
