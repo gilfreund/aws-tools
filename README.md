@@ -127,6 +127,18 @@ ecLaunch [ -t | --type INSTANCETYPE ] [ -o | --owner OWNERTAG ] [ -p | --project
 -o | --owner OWNERTAG       An owner tag, used for accounting
 -p | --project PROJECT      A Project tag, used to accounting
 
+The script will attempt to launch the appropriate AMI for the hardware architecture of the instance select.
+* Supported:
+** ARM64:    t4g|m6g|a1|c7g|c6g|c6gn|r6g|x2gd|im4gn|is4gen
+** x86_64 with GPU:  p4|p3|p2|g5|g5dn|g3
+** AWS ML chip: dl1|trn1|inf1
+** x86_64: all other
+* Unsupported
+** FPG: f1
+** Media Accelerator: vt1
+** AMD GPU: g5ad
+** ARM64 with GPU: g5g
+
 ## Requirements
 * The aws.functions file
 * the ecLaunch.vars file
