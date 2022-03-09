@@ -93,7 +93,7 @@ if [[ -z $IMAGEID ]]; then
         --names /aws/service/ecs/optimized-ami/amazon-linux-2/arm64/recommended/image_id \
         --query "Parameters[0].Value")
       ;;
-    p4|p3|p2|g5|g5dn|g3)
+    p4|p3|p2|g5|g5dn|g3|g3s)
       # X86 + GPU
       echo "Launching x86_64 with GPU Instance"
       IMAGEID=$(runAwsCommand ssm get-parameters \
