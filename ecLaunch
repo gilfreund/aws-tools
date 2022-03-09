@@ -83,60 +83,75 @@ if [[ -z $OWNERTAG ]] ; then
             --output text \
             --query User.UserName)
 fi
+# Get Requested instance information:
+while read -r Architecture vcpu Memory Storage GPU_Manufacturer GPU_Name GPU_Number GPU_Memory FPGA_Manufacturer FPGA_Name FPGA_Number FPGA_Memory INF_Manufacturer INF_Name INF_Number ; do
 
-# Get up-to-date Amazon Linux image id
-if [[ -z $IMAGEID ]]; then
-  case  ${INSTANCETYPE%.*} in
-    t4g|m6g|a1|c7g|c6g|c6gn|r6g|x2gd|im4gn|is4gen)
-      echo "Launching arm64 Instance"
+  echo "Requested $Architecture Instance with $vcpu vCPU, $Memory Memory"
+  if [[ $Storage -gt 0 ]] ; then
+    echo "The $INSTANCETYPE has $Storage of local storage"
+  fi
+
+  if [[ $GPU_Manufacturer != "None" ]] ; then
+    excelerator="$GPU_Manufacturer"
+    echo "and $GPU_Number $GPU_Manufacturer $GPU_Name and $GPU_Memory Memory"
+  elif [[ $FPGA_Manufacturer != "None" ]]; then
+    excelerator="FPGA"
+    echo "and $FPGA_Number $FPGA_Manufacturer $FPGA_Name and $FPGA_Memory Memory"
+  elif [[ $INF_Manufacturer != "None" ]]; then
+    excelerator="Inference"
+    echo "and $FPGA_Number $INF_Number $INF_Name"
+  else
+    excelerator="None"
+  fi
+
+  case $Architecture in
+    i386 | x86_64)
+      case $excelerator in
+        NVIDIA)
+          IMAGEID=$(runAwsCommand ssm get-parameters \
+          --names /aws/service/ecs/optimized-ami/amazon-linux-2/gpu/recommended/image_id \
+          --query "Parameters[0].Value")
+          ;;
+        Inference)
+        IMAGEID=$(runAwsCommand ssm get-parameters \
+          --names /aws/service/ecs/optimized-ami/amazon-linux-2/inf/recommended/image_id \
+          --query "Parameters[0].Value")
+        ;;        
+        None)
+          IMAGEID=$(runAwsCommand ec2 describe-images \
+            --owners amazon \
+            --filters 'Name=name,Values=amzn2-ami-hvm-2.0.????????.?-x86_64-gp2' 'Name=state,Values=available' \
+            --query 'reverse(sort_by(Images,&CreationDate))[:1].[ImageId]')
+          ;;
+        *)
+          echo "No support for $excelerator on $Architecture yet, exiting"
+          exit 0
+          ;;
+      esac
+      ;;
+    arm64)
       IMAGEID=$(runAwsCommand ssm get-parameters \
-        --names /aws/service/ecs/optimized-ami/amazon-linux-2/arm64/recommended/image_id \
-        --query "Parameters[0].Value")
-      ;;
-    p4|p3|p2|g5|g5dn|g3|g3s)
-      # X86 + GPU
-      echo "Launching x86_64 with GPU Instance"
-      IMAGEID=$(runAwsCommand ssm get-parameters \
-        --names /aws/service/ecs/optimized-ami/amazon-linux-2/gpu/recommended/image_id \
-        --query "Parameters[0].Value")
-      ;;
-    f1)
-      #FPGA
-      echo "No Ami for FPGA"
-      ;;
-    vt1)
-      #Media accelerator
-      echo "No Ami for media accelerator"
-      ;;
-    g5ad)
-      #AMD GPU
-      echo "No AMI for AMD GPU"
-      ;;
-    g5g)
-      # ARM + GPU
-      echo "No AMI for arm64 and GPU"
-     ;;
-    dl1|trn1|inf1)
-      # AWS ML chips
-      echo "Launching Inferna Instance"
-      IMAGEID=$(runAwsCommand ssm get-parameters \
-        --names /aws/service/ecs/optimized-ami/amazon-linux-2/inf/recommended/image_id \
-        --query "Parameters[0].Value")
+      --names /aws/service/ecs/optimized-ami/amazon-linux-2/arm64/recommended/image_id \
+      --query "Parameters[0].Value")
+          ;;
+    x86_64_mac)
+      echo "No Support for Mac X64 yet, exiting"
+      exit 0
       ;;
     *)
-      echo "Launching x86_64 AMI"
-      IMAGEID=$(runAwsCommand ec2 describe-images \
-          --owners amazon \
-          --filters 'Name=name,Values=amzn2-ami-hvm-2.0.????????.?-x86_64-gp2' 'Name=state,Values=available' \
-          --query 'reverse(sort_by(Images,&CreationDate))[:1].[ImageId]')
-      ;;
+      echo "Unknown architecture, exiting"
+      exit 0
   esac
-fi
+
+done < <(aws --output text ec2 describe-instance-types --instance-types $INSTANCETYPE \
+    --query InstanceTypes[].[ProcessorInfo.SupportedArchitectures[0],VCpuInfo.DefaultVCpus,MemoryInfo.SizeInMiB,InstanceStorageInfo.TotalSizeInGB,GpuInfo.Gpus[0].Manufacturer,GpuInfo.Gpus[0].Name,GpuInfo.Gpus[0].Count,GpuInfo.TotalGpuMemoryInMiB,FpgaInfo.Fpgas[0].Manufacturer,FpgaInfo.Fpgas[0].Name,FpgaInfo.Fpgas[0].Count,FpgaInfo.TotalFpgaMemoryInMiB,InferenceAcceleratorInfo.Accelerators[0].Manufacturer,InferenceAcceleratorInfo.Accelerators[0].Name,InferenceAcceleratorInfo.Accelerators[0].Count])
+
 if [[ -n $LAUNCHTEMPLATEVERSION ]]; then
   LAUNCHTEMPLATEVERSION=",Version=$LAUNCHTEMPLATEVERSION"
 fi
 
-runAwsCommand ec2 run-instances \
+
+InstanceID=$(runAwsCommand ec2 run-instances \
   --launch-template LaunchTemplateId=${LAUNCHTEMPLATE}${LAUNCHTEMPLATEVERSION} \
   --image-id $IMAGEID \
   --instance-type $INSTANCETYPE \
@@ -144,4 +159,6 @@ runAwsCommand ec2 run-instances \
   --tag-specifications \
   	"ResourceType=instance,Tags=[{Key=Name,Value=$NAMEPREFIX-$OWNERTAG},{Key=Creator,Value=$OWNERTAG},{Key=Owner,Value=$OWNERTAG},{Key=Project,Value=$PROJECT}$MORETAGS]" \
   	"ResourceType=volume,Tags=[{Key=Name,Value=$NAMEPREFIX-$OWNERTAG},{Key=Owner,Value=$OWNERTAG},{Key=Project,Value=$PROJECT}$MORETAGS]" \
-  --query Instances[*].[InstanceId] 
+  --query Instances[*].[InstanceId] )
+
+echo "Launching Image $IMAGEID as Instance $InstanceID"
