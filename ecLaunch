@@ -84,13 +84,27 @@ if [[ -z $OWNERTAG ]] ; then
             --query User.UserName)
 fi
 # Get Requested instance information:
-while read -r Architecture vcpu Memory Storage GPU_Manufacturer GPU_Name GPU_Number GPU_Memory FPGA_Manufacturer FPGA_Name FPGA_Number FPGA_Memory INF_Manufacturer INF_Name INF_Number ; do
+while read -r Architecture vcpu Memory StorageTotal StorageDiskSize StorageDiskCount StorageDiskNVME GPU_Manufacturer GPU_Name GPU_Number GPU_Memory FPGA_Manufacturer FPGA_Name FPGA_Number FPGA_Memory INF_Manufacturer INF_Name INF_Number ; do
 
   echo "Requested $Architecture Instance with $vcpu vCPU, $Memory Memory"
-  if [[ $Storage -gt 0 ]] ; then
-    echo "The $INSTANCETYPE has $Storage of local storage"
+  if [[ $StorageDiskCount -gt 0 ]] ; then
+    echo "The $INSTANCETYPE has $StorageDiskCount x $StorageDiskSize GB disks, Total of $StorageTotal of instance storage, NVME is $StorageDiskNVME"
+    for ((disk = 1 ; disk <= StorageDiskCount ; disk++)); do
+      printf -v DiskLetter "\x$(printf %x $((${disk}+97)))"
+      ephemeral=$((disk - 1))
+      if [[ $disk -eq 1 ]] ; then
+        DiskMapping="DeviceName=/dev/sd$DiskLetter,VirtualName=ephemeral$ephemeral"
+      elif [[ $disk -gt 1 ]] ; then
+        DiskMapping="$DiskMapping DeviceName=/dev/sd$DiskLetter,VirtualName=ephemeral$ephemeral"
+      fi
+    done 
+      extraParams="--block-device-mappings $DiskMapping"
+      echo $extraParams
+  else
+    echo "The $INSTANCETYPE has has no instance storage"
   fi
 
+  excelerator="None"
   if [[ $GPU_Manufacturer != "None" ]] ; then
     excelerator="$GPU_Manufacturer"
     echo "and $GPU_Number $GPU_Manufacturer $GPU_Name and $GPU_Memory Memory"
@@ -144,14 +158,14 @@ while read -r Architecture vcpu Memory Storage GPU_Manufacturer GPU_Name GPU_Num
   esac
 
 done < <(aws --output text ec2 describe-instance-types --instance-types $INSTANCETYPE \
-    --query InstanceTypes[].[ProcessorInfo.SupportedArchitectures[0],VCpuInfo.DefaultVCpus,MemoryInfo.SizeInMiB,InstanceStorageInfo.TotalSizeInGB,GpuInfo.Gpus[0].Manufacturer,GpuInfo.Gpus[0].Name,GpuInfo.Gpus[0].Count,GpuInfo.TotalGpuMemoryInMiB,FpgaInfo.Fpgas[0].Manufacturer,FpgaInfo.Fpgas[0].Name,FpgaInfo.Fpgas[0].Count,FpgaInfo.TotalFpgaMemoryInMiB,InferenceAcceleratorInfo.Accelerators[0].Manufacturer,InferenceAcceleratorInfo.Accelerators[0].Name,InferenceAcceleratorInfo.Accelerators[0].Count])
+    --query InstanceTypes[].[ProcessorInfo.SupportedArchitectures[0],VCpuInfo.DefaultVCpus,MemoryInfo.SizeInMiB,InstanceStorageInfo.TotalSizeInGB,InstanceStorageInfo.Disks[0].SizeInGB,InstanceStorageInfo.Disks[0].Count,InstanceStorageInfo.NvmeSupport,GpuInfo.Gpus[0].Manufacturer,GpuInfo.Gpus[0].Name,GpuInfo.Gpus[0].Count,GpuInfo.TotalGpuMemoryInMiB,FpgaInfo.Fpgas[0].Manufacturer,FpgaInfo.Fpgas[0].Name,FpgaInfo.Fpgas[0].Count,FpgaInfo.TotalFpgaMemoryInMiB,InferenceAcceleratorInfo.Accelerators[0].Manufacturer,InferenceAcceleratorInfo.Accelerators[0].Name,InferenceAcceleratorInfo.Accelerators[0].Count])
 
 if [[ -n $LAUNCHTEMPLATEVERSION ]]; then
   LAUNCHTEMPLATEVERSION=",Version=$LAUNCHTEMPLATEVERSION"
 fi
 
 
-InstanceID=$(runAwsCommand ec2 run-instances \
+InstanceID=$(aws ec2 run-instances --dry-run $extraParams \
   --launch-template LaunchTemplateId=${LAUNCHTEMPLATE}${LAUNCHTEMPLATEVERSION} \
   --image-id $IMAGEID \
   --instance-type $INSTANCETYPE \
