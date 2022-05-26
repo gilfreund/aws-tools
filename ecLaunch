@@ -84,7 +84,7 @@ if [[ -z $OWNERTAG ]] ; then
             --query User.UserName)
 fi
 # Get Requested instance information:
-while read -r Architecture vcpu Memory StorageTotal StorageDiskSize StorageDiskCount StorageDiskNVME GPU_Manufacturer GPU_Name GPU_Number GPU_Memory FPGA_Manufacturer FPGA_Name FPGA_Number FPGA_Memory INF_Manufacturer INF_Name INF_Number ; do
+while read -r Architecture vcpu Memory StorageTotal StorageDiskSize StorageDiskCount StorageDiskNVME GPU_Manufacturer GPU_Name GPU_Number GPU_Memory FPGA_Manufacturer FPGA_Name FPGA_Number FPGA_Memory INF_Manufacturer INF_Name INF_Number SupportedVirtualizationType ; do
 
   echo "Requested $Architecture Instance with $vcpu vCPU, $Memory Memory"
   if [[ $StorageDiskCount -gt 0 ]] ; then
@@ -118,23 +118,21 @@ while read -r Architecture vcpu Memory StorageTotal StorageDiskSize StorageDiskC
     excelerator="None"
   fi
 
+  ## Get AMI
   case $Architecture in
     i386 | x86_64)
       case $excelerator in
-        NVIDIA)
-          IMAGEID=$(runAwsCommand ssm get-parameters \
-          --names /aws/service/ecs/optimized-ami/amazon-linux-2/gpu/recommended/image_id \
-          --query "Parameters[0].Value")
-          ;;
-        Inference)
-        IMAGEID=$(runAwsCommand ssm get-parameters \
-          --names /aws/service/ecs/optimized-ami/amazon-linux-2/inf/recommended/image_id \
-          --query "Parameters[0].Value")
-        ;;        
+        NVIDIA | Inference)
+          ## For accelerated see https://aws.amazon.com/releasenotes/aws-deep-learning-ami-catalog/
+          IMAGEID=$(runAwsCommand ec2 describe-images \
+            --owners amazon \
+            --filters 'Name=name,Values=Deep Learning Base AMI (Amazon Linux 2) Version ??.?' 'Name=state,Values=available' \
+            --query 'reverse(sort_by(Images, &CreationDate))[:1].ImageId' --output text)
+          ;;      
         None)
           IMAGEID=$(runAwsCommand ec2 describe-images \
             --owners amazon \
-            --filters 'Name=name,Values=amzn2-ami-hvm-2.0.????????.?-x86_64-gp2' 'Name=state,Values=available' \
+            --filters "Name=name,Values=amzn2-ami-$SupportedVirtualizationType-2.0.????????.?-$Architecture-gp2" 'Name=state,Values=available' \
             --query 'reverse(sort_by(Images,&CreationDate))[:1].[ImageId]')
           ;;
         *)
@@ -144,10 +142,26 @@ while read -r Architecture vcpu Memory StorageTotal StorageDiskSize StorageDiskC
       esac
       ;;
     arm64)
-      IMAGEID=$(runAwsCommand ssm get-parameters \
-      --names /aws/service/ecs/optimized-ami/amazon-linux-2/arm64/recommended/image_id \
-      --query "Parameters[0].Value")
+      case $excelerator in
+        NVIDIA)
+          IMAGEID=$(runAwsCommand ec2 describe-images \
+            --owners amazon \
+            --filters "Name=name,Values=Deep Learning AMI*" 'Name=state,Values=available' \
+            --query 'reverse(sort_by(Images,&CreationDate))[:1].[ImageId]')
           ;;
+        None)
+          IMAGEID=$(runAwsCommand ec2 describe-images \
+            --owners amazon \
+            --filters "Name=name,Values=amzn2-ami-$SupportedVirtualizationType-2.0.????????.?-$Architecture-gp2" 'Name=state,Values=available' \
+            --query 'reverse(sort_by(Images,&CreationDate))[:1].[ImageId]')
+          ;;
+        *)
+          echo "No support for $excelerator on $Architecture yet, exiting"
+          exit 0
+          ;;
+      esac
+
+
     x86_64_mac)
       echo "No Support for Mac X64 yet, exiting"
       exit 0
@@ -158,7 +172,7 @@ while read -r Architecture vcpu Memory StorageTotal StorageDiskSize StorageDiskC
   esac
 
 done < <(aws --output text ec2 describe-instance-types --instance-types $INSTANCETYPE \
-    --query InstanceTypes[].[ProcessorInfo.SupportedArchitectures[0],VCpuInfo.DefaultVCpus,MemoryInfo.SizeInMiB,InstanceStorageInfo.TotalSizeInGB,InstanceStorageInfo.Disks[0].SizeInGB,InstanceStorageInfo.Disks[0].Count,InstanceStorageInfo.NvmeSupport,GpuInfo.Gpus[0].Manufacturer,GpuInfo.Gpus[0].Name,GpuInfo.Gpus[0].Count,GpuInfo.TotalGpuMemoryInMiB,FpgaInfo.Fpgas[0].Manufacturer,FpgaInfo.Fpgas[0].Name,FpgaInfo.Fpgas[0].Count,FpgaInfo.TotalFpgaMemoryInMiB,InferenceAcceleratorInfo.Accelerators[0].Manufacturer,InferenceAcceleratorInfo.Accelerators[0].Name,InferenceAcceleratorInfo.Accelerators[0].Count])
+    --query InstanceTypes[].[ProcessorInfo.SupportedArchitectures[0],VCpuInfo.DefaultVCpus,MemoryInfo.SizeInMiB,InstanceStorageInfo.TotalSizeInGB,InstanceStorageInfo.Disks[0].SizeInGB,InstanceStorageInfo.Disks[0].Count,InstanceStorageInfo.NvmeSupport,GpuInfo.Gpus[0].Manufacturer,GpuInfo.Gpus[0].Name,GpuInfo.Gpus[0].Count,GpuInfo.TotalGpuMemoryInMiB,FpgaInfo.Fpgas[0].Manufacturer,FpgaInfo.Fpgas[0].Name,FpgaInfo.Fpgas[0].Count,FpgaInfo.TotalFpgaMemoryInMiB,InferenceAcceleratorInfo.Accelerators[0].Manufacturer,InferenceAcceleratorInfo.Accelerators[0].Name,InferenceAcceleratorInfo.Accelerators[0].Count,SupportedVirtualizationTypes[0]])
 
 if [[ -n $LAUNCHTEMPLATEVERSION ]]; then
   LAUNCHTEMPLATEVERSION=",Version=$LAUNCHTEMPLATEVERSION"
