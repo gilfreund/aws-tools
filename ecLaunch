@@ -126,14 +126,14 @@ while read -r Architecture vcpu Memory StorageTotal StorageDiskSize StorageDiskC
           ## For accelerated see https://aws.amazon.com/releasenotes/aws-deep-learning-ami-catalog/
           IMAGEID=$(runAwsCommand ec2 describe-images \
             --owners amazon \
-            --filters 'Name=name,Values=Deep Learning Base AMI (Amazon Linux 2) Version ??.?' 'Name=state,Values=available' \
-            --query 'reverse(sort_by(Images, &CreationDate))[:1].ImageId' --output text)
+            --filters 'Name=name,Values=Deep?Learning?Base?AMI?(Amazon?Linux?2)?Version???.?' "Name=state,Values=available" \
+            --query "reverse(sort_by(Images,&CreationDate))[:1].ImageId" --output text)
           ;;      
         None)
           IMAGEID=$(runAwsCommand ec2 describe-images \
             --owners amazon \
-            --filters "Name=name,Values=amzn2-ami-$SupportedVirtualizationType-2.0.????????.?-$Architecture-gp2" 'Name=state,Values=available' \
-            --query 'reverse(sort_by(Images,&CreationDate))[:1].[ImageId]')
+            --filters "Name=name,Values=amzn2-ami-$SupportedVirtualizationType-2.0.????????.?-$Architecture-gp2" "Name=state,Values=available" \
+            --query "reverse(sort_by(Images,&CreationDate))[:1].[ImageId]")
           ;;
         *)
           echo "No support for $excelerator on $Architecture yet, exiting"
@@ -146,7 +146,7 @@ while read -r Architecture vcpu Memory StorageTotal StorageDiskSize StorageDiskC
         NVIDIA)
           IMAGEID=$(runAwsCommand ec2 describe-images \
             --owners amazon \
-            --filters "Name=name,Values=Deep Learning AMI*" 'Name=state,Values=available' \
+            --filters "Name=name,Values=Deep Learning AMI*" "Name=state,Values=available" \
             --query 'reverse(sort_by(Images,&CreationDate))[:1].[ImageId]')
           ;;
         None)
@@ -160,8 +160,7 @@ while read -r Architecture vcpu Memory StorageTotal StorageDiskSize StorageDiskC
           exit 0
           ;;
       esac
-
-
+      ;;
     x86_64_mac)
       echo "No Support for Mac X64 yet, exiting"
       exit 0
@@ -169,6 +168,7 @@ while read -r Architecture vcpu Memory StorageTotal StorageDiskSize StorageDiskC
     *)
       echo "Unknown architecture, exiting"
       exit 0
+      ;;
   esac
 
 done < <(aws --output text ec2 describe-instance-types --instance-types $INSTANCETYPE \
@@ -179,7 +179,7 @@ if [[ -n $LAUNCHTEMPLATEVERSION ]]; then
 fi
 
 
-InstanceID=$(aws ec2 run-instances --dry-run $extraParams \
+InstanceID=$(aws ec2 run-instances $extraParams \
   --launch-template LaunchTemplateId=${LAUNCHTEMPLATE}${LAUNCHTEMPLATEVERSION} \
   --image-id $IMAGEID \
   --instance-type $INSTANCETYPE \
