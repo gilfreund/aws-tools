@@ -27,11 +27,15 @@ usage() {
 if command -v sw_vers ; then 
 	if [[ $(sw_vers -productName) == macOS ]] ; then
 		if [[ -d /usr/local/opt/gnu-getopt/bin ]] ; then
-			 PATH="/usr/local/opt/gnu-getopt/bin:$PATH"
-  		else
-    			echo you need to install gnu getopt
-    			exit 1
-  		fi
+      # for Intel Mac
+			PATH="/usr/local/opt/gnu-getopt/bin:$PATH"
+  	elif [[ -d /opt/homebrew/opt/gnu-getopt/bin ]] ; then
+      # For Apple Silcon Mac
+      PATH="/opt/homebrew/opt/gnu-getopt/bin:$PATH"
+    else
+    	echo you need to install gnu getopt
+    	exit 1
+  	fi
 	fi
 fi
 
