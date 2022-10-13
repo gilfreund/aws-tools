@@ -24,8 +24,8 @@ Select host (0 for a random host, x to exit):
 * ***instanceId*** The instance ID from the available instances
 * ***list*** Returns a list of the available instances
 The *list* can be supplemented with the ***private*** or ***public*** parameter to to use the internal (private) aws addressing, or the public adressing (if defined)
-***public*** Use public addresses and DNS names
-***private*** Use private addresses and DNS names
+* ***public*** Use public addresses and DNS names
+* ***private*** Use private addresses and DNS names
 
 ## Requirments
 * The aws.functions file
