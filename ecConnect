@@ -14,9 +14,22 @@ if [[ -e $HOME/.aws-tools/${VARS##*/}.local ]] ; then
 fi
 
 function getInstances() {
-    runAwsCommand --output text ec2 describe-instances \
-    --filters Name=instance-state-name,Values=running Name=tag:"$TAG_KEY",Values="$TAG_VALUE" \
-    --query "Reservations[*].Instances[*].[InstanceId,InstanceType,PublicIpAddress,PublicDnsName,Tags[?Key=='Name']|[0].Value]"
+    case $IpConnection in
+        public)
+            runAwsCommand --output text ec2 describe-instances \
+            --filters Name=instance-state-name,Values=running Name=tag:"$TAG_KEY",Values="$TAG_VALUE" \
+            --query "Reservations[*].Instances[*].[InstanceId,InstanceType,PublicIpAddress,PublicDnsName,Tags[?Key=='Name']|[0].Value]"
+        ;;
+        private)
+            runAwsCommand --output text ec2 describe-instances \
+            --filters Name=instance-state-name,Values=running Name=tag:"$TAG_KEY",Values="$TAG_VALUE" \
+            --query "Reservations[*].Instances[*].[InstanceId,InstanceType,PrivateIpAddress,PrivateDnsName,Tags[?Key=='Name']|[0].Value]"
+        ;;
+        *)
+            echo "No IP Connection type defined (IpConnection == $IpConnection)"
+            exit
+    esac
+
 }
 
 function connectTo() {
@@ -55,7 +68,15 @@ function connectTo() {
     fi 
 }
 
-if [[ -z $1 ]]; then
+if [[ -z $1 ]] || [[ $1 == "public" ]] || [[ $1 == "private" ]]; then
+    case $1 in
+        public)
+            IpConnection=public
+        ;;
+        private)
+            IpConnection=private
+        ;;
+    esac
     echo "0:  Any host (rendom selection)"
     while IFS=$'\t' read -r InstanceId InstanceType PublicIpAddress PublicDnsName Name; do
         ((num = num + 1))
@@ -79,6 +100,14 @@ if [[ -z $1 ]]; then
         fi
     done
 else
+    case $2 in
+        public)
+            IpConnection=public
+        ;;
+        private)
+            IpConnection=private
+        ;;
+    esac
     case $1 in
         random)
             while IFS=$'\t' read -r InstanceId; do
@@ -93,6 +122,14 @@ else
             connectTo hostNumber "$1"
         ;;
         list)
+            case $2 in
+                public)
+                    IpConnection=public
+                ;;
+                private)
+                    IpConnection=private
+                ;;
+            esac
             getInstances
         ;;
         *)

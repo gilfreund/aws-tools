@@ -6,12 +6,12 @@ This are scripts I use to make my life easier in accessing and managing AWS
 A script to connect to and instance from a list in instances that are tagged as available for ssh connections.
 ## Usage
 
-ecConnect [ *number* | random | *instanceID* | list ]
+ecConnect [ *number* | random | *instanceID* | list (public | private ) | public | private ]
 
 Running without any parameters will show a list of available instances with a number. You can select the number from the list or: **0** for a random host, **x** to exit. eg:
 ```
 $ ./ecConnect.sg
-0:  Any host (rendom selection)
+0:  Any host (random selection)
 1:  Host-02 is i-11111111111111111 (r5d.large) on ec2-34-251-20-11.eu-west-1.compute.amazonaws.com (34.251.20.11)
 2:  Host-01 is i-22222222222222222 (r5d.large) on ec2-34-252-20-12.eu-west-1.compute.amazonaws.com (34.252.20.22)
 3:  Host-03 is i-33333333333333333 (r5d.large) on ec2-34-252-20-13.eu-west-1.compute.amazonaws.com (34.253.20.13)
@@ -20,9 +20,12 @@ Select host (0 for a random host, x to exit):
 ```
 
 * ***number*** A number from the list of a available instances
-* **random** A random host from the available instances
+* ***random*** A random host from the available instances
 * ***instanceId*** The instance ID from the available instances
 * ***list*** Returns a list of the available instances
+The *list* can be supplemented with the ***private*** or ***public*** parameter to to use the internal (private) aws addressing, or the public adressing (if defined)
+***public*** Use public addresses and DNS names
+***private*** Use private addresses and DNS names
 
 ## Requirments
 * The aws.functions file
@@ -54,6 +57,8 @@ SSH_USER=$(runAwsCommand --output text iam get-user --query User.UserName)
 export SSH_USER
 export TAG_KEY=Name
 export TAG_VALUE="ComputeDevelopment*"
+# Select connection path: private or public ip addressing 
+export IpConnection=public
 ```
 You can overwrite the values in ecConnect.vars by creating an ecConnect.vars.local file with your own parameters that will overwrite the the values in ecConnect.vars
 ```bash
@@ -61,6 +66,8 @@ You can overwrite the values in ecConnect.vars by creating an ecConnect.vars.loc
 SSH_USER="ec2-user"
 export SSH_USER
 export SSH_KEY="~/.ssh/ec2-user.key"
+export IpConnection=private
+
 ```
 * Set the used id connecting to the instance. By default, the script uses the IAM username, which is only useful if the IAM and Linux users are the same. 
 ```shell
