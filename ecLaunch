@@ -64,23 +64,6 @@ while true; do
     esac
 done
 
-# Get a subnet to use
-SUBNETCOUNTER=0
-SUBNETCOUNTERMAX=$(runAwsCommand ec2 describe-subnets \
-          --output text \
-          --filters Name=tag:$SUBNETTAGNAME,Values=$SUBNETTAGVALUE \
-          --query Subnets[].[SubnetId] | wc -l)
-SUBNETNUM=$((1 + RANDOM % SUBNETCOUNTERMAX))
-while IFS=$'\t' read -r SUBNETID; do
-  ((SUBNETCOUNTER  = SUBNETCOUNTER  + 1))
-  if [[ $SUBNETCOUNTER  -eq $SUBNETNUM ]] ; then
-    break
-  fi
-done < <(runAwsCommand ec2 describe-subnets \
-          --output text \
-          --filters Name=tag:$SUBNETTAGNAME,Values=$SUBNETTAGVALUE \
-          --query Subnets[].[SubnetId])
-
 # Get IAM user          
 if [[ -z $OWNERTAG ]] ; then
   OWNERTAG=$(runAwsCommand iam get-user \
@@ -103,7 +86,6 @@ while read -r Architecture vcpu Memory StorageTotal StorageDiskSize StorageDiskC
       fi
     done 
       extraParams="--block-device-mappings $DiskMapping"
-      echo $extraParams
   else
     echo "The $INSTANCETYPE has has no instance storage"
   fi
