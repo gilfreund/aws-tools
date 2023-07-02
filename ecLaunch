@@ -23,6 +23,18 @@ usage() {
   exit 2
 }
 
+# Get viable subnets (zones)
+subnets=$(aws ec2 describe-subnets --filters "Name=tag:vpc,Values=default" "Name=tag:subnet,Values=private" --query "Subnets[*].SubnetId")
+networkNumber=$((1 + $RANDOM % 3))
+counter=0
+for subnet in $subnets ; do
+  counter=$((counter = counter + 1))
+  if [[ $counter -eq $networkNumber ]] ; then
+    echo $subnet
+    break
+  fi
+done
+
 # A Hack for MacOS incompatible getop
 if command -v sw_vers ; then 
 	if [[ $(sw_vers -productName) == macOS ]] ; then
@@ -169,10 +181,11 @@ InstanceID=$(aws ec2 run-instances $extraParams \
   --launch-template LaunchTemplateId=${LAUNCHTEMPLATE}${LAUNCHTEMPLATEVERSION} \
   --image-id $IMAGEID \
   --instance-type $INSTANCETYPE \
-  --network-interfaces AssociatePublicIpAddress=true,DeviceIndex=0 \
+  --subnet-id $subnet --security-groups "EC2" --no-associate-public-ip-address \
   --tag-specifications \
   	"ResourceType=instance,Tags=[{Key=Name,Value=$NAMEPREFIX-$OWNERTAG},{Key=Creator,Value=$OWNERTAG},{Key=Owner,Value=$OWNERTAG},{Key=Project,Value=$PROJECT}$MORETAGS]" \
   	"ResourceType=volume,Tags=[{Key=Name,Value=$NAMEPREFIX-$OWNERTAG},{Key=Owner,Value=$OWNERTAG},{Key=Project,Value=$PROJECT}$MORETAGS]" \
   --query Instances[*].[InstanceId] )
 
 echo "Launching Image $IMAGEID as Instance $InstanceID"
+
