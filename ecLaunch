@@ -30,7 +30,6 @@ counter=0
 for subnet in $subnets ; do
   counter=$((counter = counter + 1))
   if [[ $counter -eq $networkNumber ]] ; then
-    echo $subnet
     break
   fi
 done
