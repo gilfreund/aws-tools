@@ -24,7 +24,7 @@ usage() {
 }
 
 # Get viable subnets (zones)
-subnets=$(aws ec2 describe-subnets --filters "Name=tag:vpc,Values=default" "Name=tag:subnet,Values=private" --query "Subnets[*].SubnetId")
+subnets=$(aws --output text ec2 describe-subnets --filters "Name=tag:vpc,Values=default" "Name=tag:subnet,Values=private" --query "Subnets[*].SubnetId")
 networkNumber=$((1 + $RANDOM % 3))
 counter=0
 for subnet in $subnets ; do
