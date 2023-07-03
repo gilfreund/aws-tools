@@ -13,6 +13,9 @@ if [[ -e $HOME/.aws-tools/${VARS##*/}.local ]] ; then
   source $HOME/.aws-tools/${VARS##*/}.local
 fi
 
+AWS_DEFAULT_OUTPUT=text
+AWS_DEFAULT_REGION=eu-west-1
+
 # Usage output
 usage() {
   echo "Usage: ${BASH_SOURCE[0]} [ -t | --type INSTANCETYPE ] [ -o | --owner OWNERTAG ] [ -p | --project PROJECT] [ -a | --ami AMI ]
@@ -176,7 +179,7 @@ if [[ -n $LAUNCHTEMPLATEVERSION ]]; then
 fi
 
 
-InstanceID=$(aws ec2 run-instances $extraParams \
+InstanceID=$(aws --output text ec2 run-instances $extraParams \
   --launch-template LaunchTemplateId=${LAUNCHTEMPLATE}${LAUNCHTEMPLATEVERSION} \
   --image-id $IMAGEID \
   --instance-type $INSTANCETYPE \
