@@ -80,9 +80,7 @@ done
 
 # Get IAM user          
 if [[ -z $OWNERTAG ]] ; then
-  OWNERTAG=$(runAwsCommand iam get-user \
-            --output text \
-            --query User.UserName)
+  OWNERTAG=$(whoami)
 fi
 # Get Requested instance information:
 while read -r Architecture vcpu Memory StorageTotal StorageDiskSize StorageDiskCount StorageDiskNVME GPU_Manufacturer GPU_Name GPU_Number GPU_Memory FPGA_Manufacturer FPGA_Name FPGA_Number FPGA_Memory INF_Manufacturer INF_Name INF_Number SupportedVirtualizationType ; do

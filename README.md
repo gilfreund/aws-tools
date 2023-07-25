@@ -53,7 +53,7 @@ export SSH_KEY=""
 export SSH_FORWARD=""
 # -X -L [bind_address:]port:host:hostport
 # -X -f -L [bind_address:]port:host:hostport
-SSH_USER=$(runAwsCommand --output text iam get-user --query User.UserName)
+SSH_USER=$(whoami)
 export SSH_USER
 export TAG_KEY=Name
 export TAG_VALUE="ComputeDevelopment*"
@@ -69,9 +69,9 @@ export SSH_KEY="~/.ssh/ec2-user.key"
 export IpConnection=private
 
 ```
-* Set the used id connecting to the instance. By default, the script uses the IAM username, which is only useful if the IAM and Linux users are the same. 
+* Set the used id connecting to the instance. By default, the script uses the local username, which is only useful if the local and Linux ec2  users are the same name . 
 ```shell
-SSH_USER=$(aws --output text  iam get-user --query User.UserName)
+SSH_USER=$(whoami)
 ```
 ---
 
