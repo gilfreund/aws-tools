@@ -1,33 +1,49 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2086,SC2102
-# Quotes and aws command do not mix well
-# shellcheck source=./aws.functions
-source ${0%/*}/aws.functions
-# shellcheck source=./ecLaunch.vars
-VARS=${0%/}.vars
-source $VARS
-if [[ -e $VARS.local ]] ; then
-  source $VARS.local
-fi
-if [[ -e $HOME/.aws-tools/${VARS##*/}.local ]] ; then
-  source $HOME/.aws-tools/${VARS##*/}.local
+
+function getMetaData {
+	local TOKEN
+	TOKEN=$(curl --max-time 10 --silent --request PUT "http://169.254.169.254/latest/api/token"  \
+		--header "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+	if [[ -n $TOKEN ]] ; then
+		local tagValue
+		tagValue=$(curl --max-time 10 --silent --fail \
+			--header "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/$1) \
+			&& echo "$tagValue"
+	else
+			exit 1
+	fi
+}
+
+if [[ -z $AVAILABILITY_ZONE ]]; then 
+	AVAILABILITY_ZONE=$(getMetaData "placement/availability-zone")
+	export AVAILABILITY_ZONE
+	export AWS_DEFAULT_REGION=${AVAILABILITY_ZONE:0:9}
 fi
 
-AWS_DEFAULT_OUTPUT=text
-AWS_DEFAULT_REGION=eu-west-1
+AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+AWS_REGION=$AWS_DEFAULT_REGION
+
+LAUNCHTEMPLATE=$(aws ec2 describe-launch-templates \
+    --launch-template-names CUDA \
+    --query "LaunchTemplates[].LaunchTemplateId" \
+    --output text) 
+# shellcheck disable=SC2016
+LAUNCHTEMPLATEVERSION='$Default'
+PROJECT=none
 
 # Usage output
 usage() {
   echo "Usage: ${BASH_SOURCE[0]} [ -t | --type INSTANCETYPE ] [ -o | --owner OWNERTAG ] [ -p | --project PROJECT] [ -a | --ami AMI ]
         If unspcified:
-        INSTANCETYPE is r5d.large
-        OWNERTAG is iam user
-        AMI is the default Amazon Linux AMI"
+        OWNERTAG is local user
+        AMI is the default Amazon Linux AMI, specify 2023 for the newest version."
   exit 2
 }
 
 # Get viable subnets (zones)
-subnets=$(aws --output text ec2 describe-subnets --filters "Name=tag:vpc,Values=default" "Name=tag:subnet,Values=private" --query "Subnets[*].SubnetId")
+subnets=$(aws --output text ec2 describe-subnets \
+  --filters "Name=tag:Name,Values=*Private*" "Name=tag:deployment,Values=denovai" \
+  --query "Subnets[*].SubnetId")
 networkNumber=$((1 + $RANDOM % 3))
 counter=0
 for subnet in $subnets ; do
@@ -78,6 +94,12 @@ while true; do
     esac
 done
 
+if [[ -z $INSTANCETYPE ]] ; then
+  echo no instance type provided
+  usage
+fi
+
+# shellcheck source=path/to/file
 # Get IAM user          
 if [[ -z $OWNERTAG ]] ; then
   OWNERTAG=$(whoami)
@@ -122,16 +144,28 @@ while read -r Architecture vcpu Memory StorageTotal StorageDiskSize StorageDiskC
       case $excelerator in
         NVIDIA | Inference)
           ## For accelerated see https://aws.amazon.com/releasenotes/aws-deep-learning-ami-catalog/
-          IMAGEID=$(runAwsCommand ec2 describe-images \
-            --owners amazon \
-            --filters 'Name=name,Values=Deep?Learning?Base?AMI?(Amazon?Linux?2)?Version???.?' "Name=state,Values=available" \
-            --query "reverse(sort_by(Images,&CreationDate))[:1].ImageId" --output text)
+          if [[ $IMAGEID == "2023" ]] ; then
+            IMAGEID=$(aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64 \
+              --query Parameter.Value --output text)
+          else
+            IMAGEID=$(aws ec2 describe-images \
+              --owners amazon \
+              --filters 'Name=name,Values=Deep?Learning?Base?AMI?(Amazon?Linux?2)?Version???.?' "Name=state,Values=available" \
+              --query "reverse(sort_by(Images,&CreationDate))[:1].ImageId" --output text)
+          fi
+          NAMEPREFIX="GPU"
           ;;      
         None)
-          IMAGEID=$(runAwsCommand ec2 describe-images \
+          if [[ $IMAGEID == "2023" ]] ; then
+            IMAGEID=$(aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64 \
+              --query Parameter.Value --output text)
+          else
+            IMAGEID=$(aws ec2 describe-images \
             --owners amazon \
             --filters "Name=name,Values=amzn2-ami-$SupportedVirtualizationType-2.0.????????.?-$Architecture-gp2" "Name=state,Values=available" \
-            --query "reverse(sort_by(Images,&CreationDate))[:1].[ImageId]")
+            --query "reverse(sort_by(Images,&CreationDate))[:1].[ImageId]" --output text)
+          fi
+          NAMEPREFIX="CPU"
           ;;
         *)
           echo "No support for $excelerator on $Architecture yet, exiting"
@@ -140,24 +174,26 @@ while read -r Architecture vcpu Memory StorageTotal StorageDiskSize StorageDiskC
       esac
       ;;
     arm64)
-      case $excelerator in
-        NVIDIA)
-          IMAGEID=$(runAwsCommand ec2 describe-images \
-            --owners amazon \
-            --filters "Name=name,Values=Deep Learning AMI*" "Name=state,Values=available" \
-            --query 'reverse(sort_by(Images,&CreationDate))[:1].[ImageId]')
-          ;;
-        None)
-          IMAGEID=$(runAwsCommand ec2 describe-images \
-            --owners amazon \
-            --filters "Name=name,Values=amzn2-ami-$SupportedVirtualizationType-2.0.????????.?-$Architecture-gp2" 'Name=state,Values=available' \
-            --query 'reverse(sort_by(Images,&CreationDate))[:1].[ImageId]')
-          ;;
-        *)
-          echo "No support for $excelerator on $Architecture yet, exiting"
-          exit 0
-          ;;
-      esac
+      echo "No Support for arm64 yet, exiting"
+      exit 0
+      # case $excelerator in
+      #   NVIDIA)
+      #     IMAGEID=$(aws ec2 describe-images \
+      #       --owners amazon \
+      #       --filters "Name=name,Values=Deep Learning AMI*" "Name=state,Values=available" \
+      #       --query 'reverse(sort_by(Images,&CreationDate))[:1].[ImageId]')
+      #     ;;
+      #   None)
+      #     IMAGEID=$(aws ec2 describe-images \
+      #       --owners amazon \
+      #       --filters "Name=name,Values=amzn2-ami-$SupportedVirtualizationType-2.0.????????.?-$Architecture-gp2" 'Name=state,Values=available' \
+      #       --query 'reverse(sort_by(Images,&CreationDate))[:1].[ImageId]')
+      #     ;;
+      #   *)
+      #     echo "No support for $excelerator on $Architecture yet, exiting"
+      #     exit 0
+      #     ;;
+      # esac
       ;;
     x86_64_mac)
       echo "No Support for Mac X64 yet, exiting"
@@ -182,10 +218,12 @@ InstanceID=$(aws --output text ec2 run-instances $extraParams \
   --image-id $IMAGEID \
   --instance-type $INSTANCETYPE \
   --subnet-id $subnet  --no-associate-public-ip-address \
+  --block-device-mappings Ebs={VolumeSize=30},DeviceName=/dev/xvda \
   --tag-specifications \
-  	"ResourceType=instance,Tags=[{Key=Name,Value=$NAMEPREFIX-$OWNERTAG},{Key=Creator,Value=$OWNERTAG},{Key=Owner,Value=$OWNERTAG},{Key=Project,Value=$PROJECT}$MORETAGS]" \
-  	"ResourceType=volume,Tags=[{Key=Name,Value=$NAMEPREFIX-$OWNERTAG},{Key=Owner,Value=$OWNERTAG},{Key=Project,Value=$PROJECT}$MORETAGS]" \
+  	"ResourceType=instance,Tags=[{Key=Name,Value=$OWNERTAG-$NAMEPREFIX},{Key=creator,Value=$OWNERTAG},{Key=deployment,Value=denovai},{Key=Project,Value=$PROJECT}]" \
+  	"ResourceType=volume,Tags=[{Key=Name,Value=$OWNERTAG-$NAMEPREFIX},{Key=creator,Value=$OWNERTAG},{Key=deployment,Value=denovai},{Key=Project,Value=$PROJECT}]" \
   --query Instances[*].[InstanceId] )
 
 echo "Launching Image $IMAGEID as Instance $InstanceID"
+
 
