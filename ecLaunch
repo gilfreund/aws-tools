@@ -29,7 +29,6 @@ LAUNCHTEMPLATE=$(aws ec2 describe-launch-templates \
     --output text) 
 # shellcheck disable=SC2016
 LAUNCHTEMPLATEVERSION='$Default'
-PROJECT=none
 
 # Usage output
 usage() {
