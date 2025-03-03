@@ -94,6 +94,10 @@ while true; do
     esac
 done
 
+if [[ -z $IMAGEID ]] ; then
+  IMAGEID="2023"
+  usage
+fi
 if [[ -z $INSTANCETYPE ]] ; then
   echo no instance type provided
   usage
@@ -103,7 +107,6 @@ if [[ -z $PROJECT ]] ; then
   usage
 fi
 PROJECT
-
 # shellcheck source=path/to/file
 # Get IAM user          
 if [[ -z $OWNERTAG ]] ; then
