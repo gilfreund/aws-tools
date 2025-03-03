@@ -98,6 +98,11 @@ if [[ -z $INSTANCETYPE ]] ; then
   echo no instance type provided
   usage
 fi
+if [[ -z $PROJECT ]] ; then
+  echo no project assigned to instance
+  usage
+fi
+PROJECT
 
 # shellcheck source=path/to/file
 # Get IAM user          
@@ -220,8 +225,8 @@ InstanceID=$(aws --output text ec2 run-instances $extraParams \
   --subnet-id $subnet  --no-associate-public-ip-address \
   --block-device-mappings Ebs={VolumeSize=30},DeviceName=/dev/xvda \
   --tag-specifications \
-  	"ResourceType=instance,Tags=[{Key=Name,Value=$OWNERTAG-$NAMEPREFIX},{Key=creator,Value=$OWNERTAG},{Key=deployment,Value=denovai},{Key=Project,Value=$PROJECT}]" \
-  	"ResourceType=volume,Tags=[{Key=Name,Value=$OWNERTAG-$NAMEPREFIX},{Key=creator,Value=$OWNERTAG},{Key=deployment,Value=denovai},{Key=Project,Value=$PROJECT}]" \
+  	"ResourceType=instance,Tags=[{Key=Name,Value=$OWNERTAG-$NAMEPREFIX},{Key=creator,Value=$OWNERTAG},{Key=deployment,Value=denovai},{Key=project,Value=$PROJECT},{Key=Project,Value=$PROJECT}]" \
+  	"ResourceType=volume,Tags=[{Key=Name,Value=$OWNERTAG-$NAMEPREFIX},{Key=creator,Value=$OWNERTAG},{Key=deployment,Value=denovai},{Key=project,Value=$PROJECT},,{Key=Project,Value=$PROJECT}]" \
   --query Instances[*].[InstanceId] )
 
 echo "Launching Image $IMAGEID as Instance $InstanceID"
