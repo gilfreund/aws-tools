@@ -13,15 +13,12 @@ function getMetaData {
 			exit 1
 	fi
 }
-
 if [[ -z $AVAILABILITY_ZONE ]]; then 
 	AVAILABILITY_ZONE=$(getMetaData "placement/availability-zone")
 	export AVAILABILITY_ZONE
 	export AWS_DEFAULT_REGION=${AVAILABILITY_ZONE:0:9}
 fi
-
 AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
-AWS_REGION=$AWS_DEFAULT_REGION
 
 LAUNCHTEMPLATE=$(aws ec2 describe-launch-templates \
     --launch-template-names CUDA \
