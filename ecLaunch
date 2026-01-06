@@ -223,7 +223,6 @@ InstanceID=$(aws --output text ec2 run-instances $extraParams \
   --image-id $IMAGEID \
   --instance-type $INSTANCETYPE \
   --subnet-id $subnet  --no-associate-public-ip-address \
-  --instance-market-options "MarketType=spot,SpotOptions={SpotInstanceType=persistent,InstanceInterruptionBehavior=hibernate}" \
   --hibernation-options Configured=true \
   --block-device-mappings Ebs={VolumeSize=30},DeviceName=/dev/xvda \
   --tag-specifications \
