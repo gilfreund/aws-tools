@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
+LaunchTemplateName=""
 function getMetaData {
 	local TOKEN
 	TOKEN=$(curl --max-time 10 --silent --request PUT "http://169.254.169.254/latest/api/token"  \
@@ -21,7 +22,7 @@ fi
 AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
 
 LAUNCHTEMPLATE=$(aws ec2 describe-launch-templates \
-    --launch-template-names CUDA \
+    --launch-template-names "$LaunchTemplateName" \
     --query "LaunchTemplates[].LaunchTemplateId" \
     --output text) 
 # shellcheck disable=SC2016
@@ -222,6 +223,9 @@ InstanceID=$(aws --output text ec2 run-instances $extraParams \
   --image-id $IMAGEID \
   --instance-type $INSTANCETYPE \
   --subnet-id $subnet  --no-associate-public-ip-address \
+  --instance-market-options \
+    MarketType=spot,SpotOptions={SpotInstanceType=persistent,InstanceInterruptionBehavior=hibernate} \
+  --hibernation-options Configured=true \
   --block-device-mappings Ebs={VolumeSize=30},DeviceName=/dev/xvda \
   --tag-specifications \
   	"ResourceType=instance,Tags=[{Key=Name,Value=$OWNERTAG-$NAMEPREFIX},{Key=creator,Value=$OWNERTAG},{Key=deployment,Value=denovai},{Key=project,Value=$PROJECT},{Key=Project,Value=$PROJECT}]" \
