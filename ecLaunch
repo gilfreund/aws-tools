@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-LaunchTemplateName=""
+NAMEPREFIX="compute-"
+LaunchTemplateName="ComputeBase"
 function getMetaData {
 	local TOKEN
 	TOKEN=$(curl --max-time 10 --silent --request PUT "http://169.254.169.254/latest/api/token"  \
@@ -39,7 +40,7 @@ usage() {
 
 # Get viable subnets (zones)
 subnets=$(aws --output text ec2 describe-subnets \
-  --filters "Name=tag:Name,Values=*Private*" "Name=tag:deployment,Values=denovai" \
+  --filters "Name=tag:Name,Values=*rivate*" \
   --query "Subnets[*].SubnetId")
 networkNumber=$((1 + $RANDOM % 3))
 counter=0
@@ -93,7 +94,6 @@ done
 
 if [[ -z $IMAGEID ]] ; then
   IMAGEID="2023"
-  usage
 fi
 if [[ -z $INSTANCETYPE ]] ; then
   echo no instance type provided
@@ -158,7 +158,7 @@ while read -r Architecture vcpu Memory StorageTotal StorageDiskSize StorageDiskC
               --filters 'Name=name,Values=Deep?Learning?Base?AMI?(Amazon?Linux?2)?Version???.?' "Name=state,Values=available" \
               --query "reverse(sort_by(Images,&CreationDate))[:1].ImageId" --output text)
           fi
-          NAMEPREFIX="GPU"
+          NAMESUFFIX="-GPU"
           ;;      
         None)
           if [[ $IMAGEID == "2023" ]] ; then
@@ -170,7 +170,7 @@ while read -r Architecture vcpu Memory StorageTotal StorageDiskSize StorageDiskC
             --filters "Name=name,Values=amzn2-ami-$SupportedVirtualizationType-2.0.????????.?-$Architecture-gp2" "Name=state,Values=available" \
             --query "reverse(sort_by(Images,&CreationDate))[:1].[ImageId]" --output text)
           fi
-          NAMEPREFIX="CPU"
+          NAMESUFFIX="-CPU"
           ;;
         *)
           echo "No support for $excelerator on $Architecture yet, exiting"
@@ -223,13 +223,12 @@ InstanceID=$(aws --output text ec2 run-instances $extraParams \
   --image-id $IMAGEID \
   --instance-type $INSTANCETYPE \
   --subnet-id $subnet  --no-associate-public-ip-address \
-  --instance-market-options \
-    MarketType=spot,SpotOptions={SpotInstanceType=persistent,InstanceInterruptionBehavior=hibernate} \
+  --instance-market-options "MarketType=spot,SpotOptions={SpotInstanceType=persistent,InstanceInterruptionBehavior=hibernate}" \
   --hibernation-options Configured=true \
   --block-device-mappings Ebs={VolumeSize=30},DeviceName=/dev/xvda \
   --tag-specifications \
-  	"ResourceType=instance,Tags=[{Key=Name,Value=$OWNERTAG-$NAMEPREFIX},{Key=creator,Value=$OWNERTAG},{Key=deployment,Value=denovai},{Key=project,Value=$PROJECT},{Key=Project,Value=$PROJECT}]" \
-  	"ResourceType=volume,Tags=[{Key=Name,Value=$OWNERTAG-$NAMEPREFIX},{Key=creator,Value=$OWNERTAG},{Key=deployment,Value=denovai},{Key=project,Value=$PROJECT},,{Key=Project,Value=$PROJECT}]" \
+  	"ResourceType=instance,Tags=[{Key=Name,Value=$NAMEPREFIX$OWNERTAG$NAMESUFFIX},{Key=creator,Value=$OWNERTAG},{Key=project,Value=$PROJECT},{Key=Project,Value=$PROJECT}]" \
+  	"ResourceType=volume,Tags=[{Key=Name,Value=$NAMEPREFIX$OWNERTAG$NAMESUFFIX},{Key=creator,Value=$OWNERTAG},{Key=project,Value=$PROJECT},{Key=Project,Value=$PROJECT}]" \
   --query Instances[*].[InstanceId] )
 
 echo "Launching Image $IMAGEID as Instance $InstanceID"
