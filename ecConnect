@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # shellcheck source=./tools.rc
-source "${0%/*}/tools.rc"
+_TOOLS_RC="${0%/*}/tools.rc"
+if [[ ! -f "$_TOOLS_RC" ]]; then
+  echo "ERROR: tools.rc not found at $_TOOLS_RC"
+  echo "Ensure tools.rc is in the same directory as ecConnect."
+  exit 1
+fi
+source "$_TOOLS_RC"
 
 if [[ -z "$EC_SSH_KEY" ]]; then
   echo "EC_SSH_KEY is not set. Select a private key to use:"
@@ -10,6 +16,10 @@ if [[ -z "$EC_SSH_KEY" ]]; then
   for _k in "$HOME/.ssh/"*; do
     [[ -f "$_k" && -f "${_k}.pub" ]] && _keys+=("$_k")
   done
+
+  if [[ ${#_keys[@]} -eq 0 ]]; then
+    echo "  No private keys found in ~/.ssh (looked for files with a matching .pub)."
+  fi
 
   _i=1
   for _k in "${_keys[@]}"; do
@@ -172,6 +182,11 @@ function connectTo() {
         fi
     done < <(getInstances)
 
+    if [[ -z "$InstanceId" ]]; then
+        echo "ERROR: No matching instance found."
+        exit 1
+    fi
+
     local PARAMS=""
     if [[ -n "$EC_SSH_KEY" ]];        then PARAMS="$EC_SSH_KEY"; fi
     if [[ -n "$EC_SSH_FORWARD" ]];    then PARAMS="$PARAMS $EC_SSH_FORWARD"; fi
@@ -180,16 +195,17 @@ function connectTo() {
     if [[ $EC_IP_CONNECTION == ssm ]]; then
         # SSH over SSM — requires aws-session-manager-plugin installed
         local _proxy="aws ssm start-session --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p"
+        local _ssmErrFile; _ssmErrFile=$(mktemp)
         PARAMS="$PARAMS -o ProxyCommand='$_proxy'"
         if [[ $_SSH_FORK -eq 1 ]]; then
             # shellcheck disable=SC2086
-            ssh -f -N $PARAMS "$EC_SSH_USER"@"$InstanceId" 2>/tmp/ecConnect_ssm_err
+            ssh -f -N $PARAMS "$EC_SSH_USER"@"$InstanceId" 2>"$_ssmErrFile"
         else
             # shellcheck disable=SC2086
-            ssh -tt $PARAMS "$EC_SSH_USER"@"$InstanceId" </dev/tty 2>/tmp/ecConnect_ssm_err
+            ssh -tt $PARAMS "$EC_SSH_USER"@"$InstanceId" </dev/tty 2>"$_ssmErrFile"
         fi
         local _rc=$?
-        if [[ $_rc -ne 0 ]] && grep -q "TargetNotConnected\|not connected\|Connection closed by UNKNOWN" /tmp/ecConnect_ssm_err 2>/dev/null; then
+        if [[ $_rc -ne 0 ]] && grep -q "TargetNotConnected\|not connected\|Connection closed by UNKNOWN" "$_ssmErrFile" 2>/dev/null; then
             echo ""
             echo "ERROR: Could not connect to $InstanceId via Session Manager."
             echo ""
@@ -204,10 +220,10 @@ function connectTo() {
             echo "     Fix: verify the instance is running: aws ec2 describe-instances --instance-ids $InstanceId"
             echo "  5. Your IAM identity lacks ssm:StartSession permission for this instance."
             echo "     Fix: check your IAM policy includes ssm:StartSession on the target resource."
-            rm -f /tmp/ecConnect_ssm_err
+            rm -f "$_ssmErrFile"
             exit 1
         fi
-        rm -f /tmp/ecConnect_ssm_err
+        rm -f "$_ssmErrFile"
     elif [[ $_SSH_FORK -eq 1 ]]; then
         # shellcheck disable=SC2086
         ssh -f -N $PARAMS "$EC_SSH_USER"@"$PublicIpAddress"
@@ -231,6 +247,10 @@ if [[ -z $1 ]] || [[ $1 == "public" ]] || [[ $1 == "private" ]] || [[ $1 == "ssm
         ((num = num + 1))
         echo "$num:  $Name is $InstanceId (${InstanceType}) on $PublicDnsName (${PublicIpAddress})"
     done < <(getInstances)
+    if [[ $num -eq 0 ]]; then
+        echo "No running instances found matching the current filter."
+        exit 1
+    fi
     echo "x:  Exit"
     while true; do
         read -rp 'Select host (0 for a random host, x to exit): ' hostNum
@@ -260,6 +280,10 @@ else
             while IFS=$'\t' read -r InstanceId; do
                 ((num = num + 1))
             done < <(getInstances)
+            if [[ $num -eq 0 ]]; then
+                echo "No running instances found matching the current filter."
+                exit 1
+            fi
             connectTo hostNumber $((1 + RANDOM % num))
         ;;
         i-*)

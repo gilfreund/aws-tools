@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # shellcheck source=./tools.rc
-source "${0%/*}/tools.rc"
+_TOOLS_RC="${0%/*}/tools.rc"
+if [[ ! -f "$_TOOLS_RC" ]]; then
+  echo "ERROR: tools.rc not found at $_TOOLS_RC"
+  echo "Ensure tools.rc is in the same directory as ecLaunch."
+  exit 1
+fi
+source "$_TOOLS_RC"
 
 EC_NAME_PREFIX="${EC_NAME_PREFIX:-compute-}"
 
@@ -112,7 +118,11 @@ _resolveVpc() {
   local _vpcData
   _vpcData=$(aws --output text ec2 describe-vpcs \
     ${_vpcFilters:+--filters "${_vpcFilters[@]}"} \
-    --query "Vpcs[*].[VpcId,CidrBlock,Tags[?Key=='Name']|[0].Value,IsDefault]")
+    --query "Vpcs[*].[VpcId,CidrBlock,Tags[?Key=='Name']|[0].Value,IsDefault]" 2>/dev/null) || true
+
+  if [[ $? -ne 0 ]] || [[ -z "$_vpcData" && ${#_vpcFilters[@]} -gt 0 ]]; then
+    : # empty is handled below
+  fi
 
   local _vpcIds=() _vpcLines=()
   while IFS=$'\t' read -r _vid _cidr _name _default; do
@@ -327,24 +337,32 @@ while read -r Architecture vcpu Memory StorageTotal StorageDiskSize StorageDiskC
           ## For accelerated see https://aws.amazon.com/releasenotes/aws-deep-learning-ami-catalog/
           if [[ $_IMAGEID == "2023" ]]; then
             _IMAGEID=$(aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64 \
-              --query Parameter.Value --output text)
+              --query Parameter.Value --output text 2>/dev/null) || true
           else
             _IMAGEID=$(aws ec2 describe-images \
               --owners amazon \
               --filters 'Name=name,Values=Deep?Learning?Base?AMI?(Amazon?Linux?2)?Version???.?' "Name=state,Values=available" \
-              --query "reverse(sort_by(Images,&CreationDate))[:1].ImageId" --output text)
+              --query "reverse(sort_by(Images,&CreationDate))[:1].ImageId" --output text 2>/dev/null) || true
+          fi
+          if [[ -z "$_IMAGEID" || "$_IMAGEID" == "None" ]]; then
+            echo "ERROR: Could not resolve AMI for $accelerator on $Architecture. Exiting."
+            exit 1
           fi
           _NAMESUFFIX="-GPU"
           ;;
         None)
           if [[ $_IMAGEID == "2023" ]]; then
             _IMAGEID=$(aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64 \
-              --query Parameter.Value --output text)
+              --query Parameter.Value --output text 2>/dev/null) || true
           else
             _IMAGEID=$(aws ec2 describe-images \
               --owners amazon \
               --filters "Name=name,Values=amzn2-ami-$SupportedVirtualizationType-2.0.????????.?-$Architecture-gp2" "Name=state,Values=available" \
-              --query "reverse(sort_by(Images,&CreationDate))[:1].[ImageId]" --output text)
+              --query "reverse(sort_by(Images,&CreationDate))[:1].[ImageId]" --output text 2>/dev/null) || true
+          fi
+          if [[ -z "$_IMAGEID" || "$_IMAGEID" == "None" ]]; then
+            echo "ERROR: Could not resolve AMI for $Architecture. Exiting."
+            exit 1
           fi
           _NAMESUFFIX="-CPU"
           ;;
@@ -413,6 +431,11 @@ InstanceID=$(aws --output text ec2 run-instances $extraParams \
   --tag-specifications \
     "ResourceType=instance,Tags=[{Key=Name,Value=${EC_NAME_PREFIX}${_OWNERTAG}${_NAMESUFFIX}},{Key=owner,Value=$_OWNERTAG},{Key=creator,Value=$_OWNERTAG},{Key=project,Value=$_PROJECT},{Key=Project,Value=$_PROJECT}${_extraTagJson}]" \
     "ResourceType=volume,Tags=[{Key=Name,Value=${EC_NAME_PREFIX}${_OWNERTAG}${_NAMESUFFIX}},{Key=owner,Value=$_OWNERTAG},{Key=creator,Value=$_OWNERTAG},{Key=project,Value=$_PROJECT},{Key=Project,Value=$_PROJECT}${_extraTagJson}]" \
-  --query "Instances[*].[InstanceId]")
+  --query "Instances[*].[InstanceId]") || true
+
+if [[ -z "$InstanceID" ]]; then
+  echo "ERROR: run-instances failed or returned no instance ID. Check AWS CLI output above for details."
+  exit 1
+fi
 
 echo "Launching Image $_IMAGEID as Instance $InstanceID"
