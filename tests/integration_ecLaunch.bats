@@ -44,7 +44,7 @@ setup() {
 @test "at least one private subnet is available" {
   run bash -c "
     aws --output text ec2 describe-subnets \
-      --filters 'Name=tag:Name,Values=*rivate*' \
+      --filters 'Name=tag:Name,Values=*private*' \
       --query 'length(Subnets)' --output text
   "
   [ "$status" -eq 0 ]
@@ -84,7 +84,7 @@ setup() {
 @test "ecLaunch --dry-run with explicit subnet uses that subnet" {
   local _subnet
   _subnet=$(aws --output text ec2 describe-subnets \
-    --filters "Name=tag:Name,Values=*rivate*" \
+    --filters "Name=tag:Name,Values=*private*" \
     --query "Subnets[0].SubnetId")
   skip_if "No private subnets found" "[[ -z '$_subnet' || '$_subnet' == 'None' ]]"
 

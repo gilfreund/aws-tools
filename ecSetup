@@ -230,8 +230,8 @@ _configureConf() {
 
   _cur=$(_readVar "$confFile" "EC_SUBNET_FILTER")
   _val=$(_promptVar "EC_SUBNET_FILTER" \
-    "Tag Name filter for subnet discovery. Wildcards supported (e.g. *private*)." "${_cur:-*rivate*}")
-  _writeVar "$confFile" "EC_SUBNET_FILTER" "${_val:-*rivate*}"
+    "Tag Name filter for subnet discovery. Wildcards supported (e.g. *private*)." "${_cur:-*private*}")
+  _writeVar "$confFile" "EC_SUBNET_FILTER" "${_val:-*private*}"
 
   _cur=$(_readVar "$confFile" "EC_SUBNET_ID")
   _val=$(_promptVar "EC_SUBNET_ID" \

@@ -59,7 +59,7 @@ verify that the scripts work end-to-end with live AWS resources.
 
 - Valid AWS credentials (`aws configure`, SSO, or instance role)
 - IAM permissions as described in `docs/iam-policy-ecLaunch.json` and `docs/iam-policy-ecConnect.json`
-- At least one VPC with private subnets tagged with a name containing `rivate`
+- At least one VPC with private subnets tagged with a name containing `private`
 - `bats-core` installed
 
 ### Running

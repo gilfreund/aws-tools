@@ -86,7 +86,7 @@ setup() {
 @test "at least one private subnet exists" {
   run bash -c "
     aws --output text ec2 describe-subnets \
-      --filters 'Name=tag:Name,Values=*rivate*' \
+      --filters 'Name=tag:Name,Values=*private*' \
       --query 'Subnets[*].SubnetId' | wc -w | tr -d ' '
   "
   [ "$status" -eq 0 ]

@@ -49,7 +49,7 @@ EC_IP_CONNECTION="private"
 EC_INSTANCE_TYPE="t3.medium"
 EC_NAME_PREFIX="test-"
 EC_PROJECT="test-project"
-EC_SUBNET_FILTER="*rivate*"
+EC_SUBNET_FILTER="*private*"
 EOF
 }
 

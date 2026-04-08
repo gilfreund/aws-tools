@@ -85,9 +85,9 @@ EC_IP_CONNECTION=private
 # EC_SUBNET_FILTER
 #   Tag Name filter used to discover eligible subnets for instance launch.
 #   Supports wildcards (e.g. "*private*", "prod-private-*").
-#   If unset: defaults to "*rivate*" (matches any subnet with "rivate" in Name).
+#   If unset: defaults to "*private*" (matches any subnet with "private" in Name).
 #   Override: -s / --subnet flag on the command line to specify a subnet ID directly.
-EC_SUBNET_FILTER="*rivate*"
+EC_SUBNET_FILTER="*private*"
 
 # EC_SUBNET_ID
 #   Pin a specific subnet ID to always use for instance launch.

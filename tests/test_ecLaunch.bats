@@ -11,7 +11,7 @@ setup() {
   export EC_INSTANCE_TYPE="t3.medium"
   export EC_NAME_PREFIX="test-"
   export EC_PROJECT="test-project"
-  export EC_SUBNET_FILTER="*rivate*"
+  export EC_SUBNET_FILTER="*private*"
   export AWS_DEFAULT_REGION="us-east-1"
   export _callerArn="arn:aws:iam::123456789012:user/testuser"
   export userConf="$TEST_HOME/.config/ecTools/ecTools.conf"

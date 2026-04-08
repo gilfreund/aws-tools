@@ -79,7 +79,7 @@ usage() {
 
 # Get viable subnets based on EC_SUBNET_FILTER scoped to _VPC_ID if set
 _getSubnets() {
-  local _filter="${EC_SUBNET_FILTER:-*rivate*}"
+  local _filter="${EC_SUBNET_FILTER:-*private*}"
   local _filters=("Name=tag:Name,Values=$_filter")
   [[ -n "${_VPC_ID:-}" ]] && _filters+=("Name=vpc-id,Values=$_VPC_ID")
   aws --output text ec2 describe-subnets \
@@ -89,7 +89,7 @@ _getSubnets() {
 
 # List subnets in a readable table
 _listSubnets() {
-  local _filter="${EC_SUBNET_FILTER:-*rivate*}"
+  local _filter="${EC_SUBNET_FILTER:-*private*}"
   local _filters=("Name=tag:Name,Values=$_filter")
   [[ -n "${_VPC_ID:-}" ]] && _filters+=("Name=vpc-id,Values=$_VPC_ID")
   echo "Available subnets (filter: Name='$_filter'${_VPC_ID:+, VPC=$_VPC_ID}):"
@@ -211,7 +211,7 @@ else
 
   subnetCount=${#_subnetList[@]}
   if [[ $subnetCount -eq 0 ]]; then
-    echo "No subnets found matching filter '${EC_SUBNET_FILTER:-*rivate*}'"
+    echo "No subnets found matching filter '${EC_SUBNET_FILTER:-*private*}'"
     echo ""
     _listSubnets
     exit 1
