@@ -1,0 +1,139 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  ecTools integration test — EC2 instances for ecConnect tests.
+  Launches two t3.micro instances in the single-VPC private subnet,
+  tagged so ecConnect can discover them. Requires vpc-single stack.
+
+Parameters:
+  VpcSingleStackName:
+    Type: String
+    Default: ectools-test-vpc-single
+    Description: Name of the vpc-single.yaml stack (for subnet/VPC imports).
+
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: EC2 key pair for SSH access (used by ecConnect tests).
+
+  InstanceType:
+    Type: String
+    Default: t3.micro
+    Description: Instance type for test instances.
+
+  AmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+    Description: AMI to use (defaults to latest Amazon Linux 2023).
+
+Resources:
+
+  # ---------------------------------------------------------------------------
+  # IAM role for SSM agent (allows ecConnect SSM mode)
+  # ---------------------------------------------------------------------------
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ectools-test-instance-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Tags:
+        - Key: purpose
+          Value: ectools-integration-test
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: ectools-test-instance-profile
+      Roles:
+        - !Ref InstanceRole
+
+  # ---------------------------------------------------------------------------
+  # Security group — no inbound SSH (SSM only), outbound for SSM endpoints
+  # ---------------------------------------------------------------------------
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ecTools test instances — SSM access only
+      VpcId:
+        Fn::ImportValue: !Sub "${VpcSingleStackName}-VpcId"
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: "0.0.0.0/0"
+          Description: HTTPS outbound for SSM agent
+      Tags:
+        - Key: Name
+          Value: ectools-test-sg
+        - Key: purpose
+          Value: ectools-integration-test
+
+  # ---------------------------------------------------------------------------
+  # Test instance 1 — tagged for ecConnect discovery
+  # ---------------------------------------------------------------------------
+  TestInstance1:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref AmiId
+      KeyName: !Ref KeyPairName
+      SubnetId:
+        Fn::ImportValue: !Sub "${VpcSingleStackName}-PrivateSubnet1Id"
+      IamInstanceProfile: !Ref InstanceProfile
+      SecurityGroupIds:
+        - !Ref InstanceSecurityGroup
+      Tags:
+        - Key: Name
+          Value: ectools-test-instance-1
+        - Key: owner
+          Value: ectools-test
+        - Key: project
+          Value: ectools-integration-test
+        - Key: purpose
+          Value: ectools-integration-test
+
+  # ---------------------------------------------------------------------------
+  # Test instance 2 — second instance to test list/random/selection
+  # ---------------------------------------------------------------------------
+  TestInstance2:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref AmiId
+      KeyName: !Ref KeyPairName
+      SubnetId:
+        Fn::ImportValue: !Sub "${VpcSingleStackName}-PrivateSubnet2Id"
+      IamInstanceProfile: !Ref InstanceProfile
+      SecurityGroupIds:
+        - !Ref InstanceSecurityGroup
+      Tags:
+        - Key: Name
+          Value: ectools-test-instance-2
+        - Key: owner
+          Value: ectools-test
+        - Key: project
+          Value: ectools-integration-test
+        - Key: purpose
+          Value: ectools-integration-test
+
+Outputs:
+  Instance1Id:
+    Value: !Ref TestInstance1
+    Export:
+      Name: !Sub "${AWS::StackName}-Instance1Id"
+
+  Instance2Id:
+    Value: !Ref TestInstance2
+    Export:
+      Name: !Sub "${AWS::StackName}-Instance2Id"
+
+  InstanceRoleArn:
+    Value: !GetAtt InstanceRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-InstanceRoleArn"

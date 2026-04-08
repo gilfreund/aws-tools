@@ -1,0 +1,251 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  ecTools integration test — IAM resources.
+  Creates an IAM user and IAM Identity Center permission sets
+  with the minimum permissions required to run ecConnect and ecLaunch.
+
+Parameters:
+  IdentityCenterInstanceArn:
+    Type: String
+    Description: >
+      ARN of the IAM Identity Center instance (Settings page).
+      Leave blank to skip Identity Center resources.
+    Default: ""
+
+  IdentityCenterUserId:
+    Type: String
+    Description: >
+      Identity Center user ID to assign permission sets to.
+      Leave blank to skip assignment.
+    Default: ""
+
+  TargetAccountId:
+    Type: String
+    Description: AWS account ID where the permission sets will be assigned.
+    AllowedPattern: "[0-9]{12}"
+
+  SessionDurationHours:
+    Type: Number
+    Default: 8
+    MinValue: 1
+    MaxValue: 12
+
+Conditions:
+  CreateIdentityCenterResources: !Not [!Equals [!Ref IdentityCenterInstanceArn, ""]]
+  AssignIdentityCenterUser: !And
+    - !Condition CreateIdentityCenterResources
+    - !Not [!Equals [!Ref IdentityCenterUserId, ""]]
+
+Resources:
+
+  # ---------------------------------------------------------------------------
+  # IAM user for CLI-based integration tests
+  # ---------------------------------------------------------------------------
+  EcToolsTestUser:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: ectools-integration-test
+      Tags:
+        - Key: purpose
+          Value: ectools-integration-test
+
+  EcToolsTestUserAccessKey:
+    Type: AWS::IAM::AccessKey
+    Properties:
+      UserName: !Ref EcToolsTestUser
+
+  EcToolsTestUserPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: ectools-integration-test
+      Description: Minimum permissions for ecTools integration tests
+      Users:
+        - !Ref EcToolsTestUser
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: VerifyIdentity
+            Effect: Allow
+            Action: sts:GetCallerIdentity
+            Resource: "*"
+          - Sid: ListInstances
+            Effect: Allow
+            Action: ec2:DescribeInstances
+            Resource: "*"
+          - Sid: SSMTunnel
+            Effect: Allow
+            Action: ssm:StartSession
+            Resource: "*"
+          - Sid: DiscoverNetwork
+            Effect: Allow
+            Action:
+              - ec2:DescribeVpcs
+              - ec2:DescribeSubnets
+            Resource: "*"
+          - Sid: ResolveLaunchTemplate
+            Effect: Allow
+            Action: ec2:DescribeLaunchTemplates
+            Resource: "*"
+          - Sid: ResolveInstanceType
+            Effect: Allow
+            Action: ec2:DescribeInstanceTypes
+            Resource: "*"
+          - Sid: ResolveAMI
+            Effect: Allow
+            Action:
+              - ec2:DescribeImages
+              - ssm:GetParameter
+            Resource: "*"
+          - Sid: LaunchInstance
+            Effect: Allow
+            Action: ec2:RunInstances
+            Resource: "*"
+          - Sid: TerminateTestInstances
+            Effect: Allow
+            Action:
+              - ec2:TerminateInstances
+              - ec2:DescribeInstanceStatus
+            Resource: "*"
+            Condition:
+              StringEquals:
+                ec2:ResourceTag/project: ectools-integration-test
+          - Sid: PassInstanceRole
+            Effect: Allow
+            Action: iam:PassRole
+            Resource: "*"
+            Condition:
+              StringEquals:
+                iam:PassedToService: ec2.amazonaws.com
+
+  # ---------------------------------------------------------------------------
+  # IAM Identity Center permission sets (optional)
+  # ---------------------------------------------------------------------------
+  PermissionSetEcConnect:
+    Type: AWS::SSO::PermissionSet
+    Condition: CreateIdentityCenterResources
+    Properties:
+      Name: ecTools-ecConnect-test
+      Description: ecConnect integration test permission set
+      InstanceArn: !Ref IdentityCenterInstanceArn
+      SessionDuration: !Sub "PT${SessionDurationHours}H"
+      InlinePolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: VerifyIdentity
+            Effect: Allow
+            Action: sts:GetCallerIdentity
+            Resource: "*"
+          - Sid: ListInstances
+            Effect: Allow
+            Action: ec2:DescribeInstances
+            Resource: "*"
+          - Sid: SSMTunnel
+            Effect: Allow
+            Action: ssm:StartSession
+            Resource: "*"
+
+  PermissionSetEcLaunch:
+    Type: AWS::SSO::PermissionSet
+    Condition: CreateIdentityCenterResources
+    Properties:
+      Name: ecTools-ecLaunch-test
+      Description: ecLaunch integration test permission set
+      InstanceArn: !Ref IdentityCenterInstanceArn
+      SessionDuration: !Sub "PT${SessionDurationHours}H"
+      InlinePolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: VerifyIdentity
+            Effect: Allow
+            Action: sts:GetCallerIdentity
+            Resource: "*"
+          - Sid: DiscoverNetwork
+            Effect: Allow
+            Action:
+              - ec2:DescribeVpcs
+              - ec2:DescribeSubnets
+            Resource: "*"
+          - Sid: ResolveLaunchTemplate
+            Effect: Allow
+            Action: ec2:DescribeLaunchTemplates
+            Resource: "*"
+          - Sid: ResolveInstanceType
+            Effect: Allow
+            Action: ec2:DescribeInstanceTypes
+            Resource: "*"
+          - Sid: ResolveAMI
+            Effect: Allow
+            Action:
+              - ec2:DescribeImages
+              - ssm:GetParameter
+            Resource: "*"
+          - Sid: LaunchInstance
+            Effect: Allow
+            Action: ec2:RunInstances
+            Resource: "*"
+          - Sid: TerminateTestInstances
+            Effect: Allow
+            Action:
+              - ec2:TerminateInstances
+              - ec2:DescribeInstanceStatus
+            Resource: "*"
+            Condition:
+              StringEquals:
+                ec2:ResourceTag/project: ectools-integration-test
+          - Sid: PassInstanceRole
+            Effect: Allow
+            Action: iam:PassRole
+            Resource: "*"
+            Condition:
+              StringEquals:
+                iam:PassedToService: ec2.amazonaws.com
+
+  AssignmentEcConnect:
+    Type: AWS::SSO::Assignment
+    Condition: AssignIdentityCenterUser
+    Properties:
+      InstanceArn: !Ref IdentityCenterInstanceArn
+      PermissionSetArn: !GetAtt PermissionSetEcConnect.PermissionSetArn
+      PrincipalId: !Ref IdentityCenterUserId
+      PrincipalType: USER
+      TargetId: !Ref TargetAccountId
+      TargetType: AWS_ACCOUNT
+
+  AssignmentEcLaunch:
+    Type: AWS::SSO::Assignment
+    Condition: AssignIdentityCenterUser
+    Properties:
+      InstanceArn: !Ref IdentityCenterInstanceArn
+      PermissionSetArn: !GetAtt PermissionSetEcLaunch.PermissionSetArn
+      PrincipalId: !Ref IdentityCenterUserId
+      PrincipalType: USER
+      TargetId: !Ref TargetAccountId
+      TargetType: AWS_ACCOUNT
+
+Outputs:
+  IamUserName:
+    Value: !Ref EcToolsTestUser
+    Export:
+      Name: !Sub "${AWS::StackName}-IamUserName"
+
+  IamAccessKeyId:
+    Value: !Ref EcToolsTestUserAccessKey
+    Export:
+      Name: !Sub "${AWS::StackName}-IamAccessKeyId"
+
+  IamSecretAccessKey:
+    Value: !GetAtt EcToolsTestUserAccessKey.SecretAccessKey
+    Export:
+      Name: !Sub "${AWS::StackName}-IamSecretAccessKey"
+
+  EcConnectPermissionSetArn:
+    Condition: CreateIdentityCenterResources
+    Value: !GetAtt PermissionSetEcConnect.PermissionSetArn
+    Export:
+      Name: !Sub "${AWS::StackName}-EcConnectPermissionSetArn"
+
+  EcLaunchPermissionSetArn:
+    Condition: CreateIdentityCenterResources
+    Value: !GetAtt PermissionSetEcLaunch.PermissionSetArn
+    Export:
+      Name: !Sub "${AWS::StackName}-EcLaunchPermissionSetArn"

@@ -1,0 +1,130 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  ecTools integration test — additional VPCs for multi-VPC scenario.
+  Creates two more VPCs (VPC-A and VPC-B), each with a private subnet.
+  Together with vpc-single.yaml this gives three VPCs, which triggers
+  ecLaunch's interactive VPC selection menu.
+
+Parameters:
+  VpcACidr:
+    Type: String
+    Default: "10.20.0.0/16"
+
+  VpcBCidr:
+    Type: String
+    Default: "10.30.0.0/16"
+
+  PrivateSubnetACidr:
+    Type: String
+    Default: "10.20.1.0/24"
+
+  PrivateSubnetBCidr:
+    Type: String
+    Default: "10.30.1.0/24"
+
+Resources:
+
+  # ---------------------------------------------------------------------------
+  # VPC A
+  # ---------------------------------------------------------------------------
+  VpcA:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcACidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: ectools-test-vpc-a
+        - Key: purpose
+          Value: ectools-integration-test
+
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcA
+      CidrBlock: !Ref PrivateSubnetACidr
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: ectools-test-private-a
+        - Key: purpose
+          Value: ectools-integration-test
+
+  RouteTableA:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VpcA
+      Tags:
+        - Key: Name
+          Value: ectools-test-rt-a
+
+  SubnetARouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetA
+      RouteTableId: !Ref RouteTableA
+
+  # ---------------------------------------------------------------------------
+  # VPC B
+  # ---------------------------------------------------------------------------
+  VpcB:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcBCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: ectools-test-vpc-b
+        - Key: purpose
+          Value: ectools-integration-test
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcB
+      CidrBlock: !Ref PrivateSubnetBCidr
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: ectools-test-private-b
+        - Key: purpose
+          Value: ectools-integration-test
+
+  RouteTableB:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VpcB
+      Tags:
+        - Key: Name
+          Value: ectools-test-rt-b
+
+  SubnetBRouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetB
+      RouteTableId: !Ref RouteTableB
+
+Outputs:
+  VpcAId:
+    Value: !Ref VpcA
+    Export:
+      Name: !Sub "${AWS::StackName}-VpcAId"
+
+  VpcBId:
+    Value: !Ref VpcB
+    Export:
+      Name: !Sub "${AWS::StackName}-VpcBId"
+
+  PrivateSubnetAId:
+    Value: !Ref PrivateSubnetA
+    Export:
+      Name: !Sub "${AWS::StackName}-PrivateSubnetAId"
+
+  PrivateSubnetBId:
+    Value: !Ref PrivateSubnetB
+    Export:
+      Name: !Sub "${AWS::StackName}-PrivateSubnetBId"
