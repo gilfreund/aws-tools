@@ -1,0 +1,306 @@
+#!/usr/bin/env bash
+# ecSetup — install and configure aws-tools
+# Usage: ecSetup [--configure] [--target DIR]
+
+set -euo pipefail
+
+SCRIPTS=(ecConnect ecLaunch tools.rc)
+CONF_EXAMPLE="ecTools.conf.example"
+CONF_NAME="ecTools.conf"
+USERSCRIPT_EXAMPLE="ecUserScript.example"
+USERSCRIPT_NAME="ecUserScript"
+SRCDIR="${0%/*}"
+
+# ---------------------------------------------------------------------------
+# Determine install locations
+# ---------------------------------------------------------------------------
+_parseArgs() {
+  CONFIGURE_ONLY=0
+  TARGET_BIN=""
+  TARGET_CONF=""
+
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      --configure) CONFIGURE_ONLY=1; shift ;;
+      --target)    TARGET_BIN="$2"; TARGET_CONF="$2"; shift 2 ;;
+      -h|--help)
+        echo "Usage: ${BASH_SOURCE[0]} [--configure] [--target DIR] [-h | --help]"
+        echo ""
+        echo "Install and configure aws-tools (ecConnect, ecLaunch, tools.rc)."
+        echo ""
+        echo "Options:"
+        echo "  --configure      Only review and update the configuration file."
+        echo "                   Does not deploy or overwrite any scripts."
+        echo "  --target DIR     Install scripts and conf to DIR instead of the"
+        echo "                   default location."
+        echo "  -h | --help      Show this help and exit."
+        echo ""
+        echo "Default install locations:"
+        echo "  root user:  scripts → /usr/local/bin"
+        echo "              config  → /etc/aws-tools/ecTools.conf"
+        echo "  other user: scripts → ~/bin"
+        echo "              config  → ~/.config/aws-tools/ecTools.conf"
+        echo ""
+        echo "Configuration file:"
+        echo "  On first run, ecTools.conf.example is copied and you are"
+        echo "  prompted to set each variable. On subsequent runs with --configure,"
+        echo "  existing values are shown as defaults — press Enter to keep them."
+        echo ""
+        echo "  ecUserScript (optional user data script for ecLaunch) is never"
+        echo "  overwritten if it already exists. You will be offered the option"
+        echo "  to copy ecUserScript.example if none is present."
+        echo ""
+        echo "Examples:"
+        echo "  ./ecSetup                        # install + configure (current user)"
+        echo "  sudo ./ecSetup                   # install + configure (system-wide)"
+        echo "  ./ecSetup --target /opt/mytools  # install to custom location"
+        echo "  ./ecSetup --configure            # update config only"
+        exit 0 ;;
+      *) echo "Unknown option: $1"; exit 1 ;;
+    esac
+  done
+
+  if [[ -z "$TARGET_BIN" ]]; then
+    if [[ $EUID -eq 0 ]]; then
+      TARGET_BIN="/usr/local/bin"
+      TARGET_CONF="/etc/aws-tools"
+    else
+      TARGET_BIN="${HOME}/bin"
+      TARGET_CONF="${HOME}/.config/aws-tools"
+    fi
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Deploy scripts
+# ---------------------------------------------------------------------------
+_deployScripts() {
+  echo ""
+  echo "==> Deploying scripts to $TARGET_BIN"
+  mkdir -p "$TARGET_BIN"
+
+  for _script in "${SCRIPTS[@]}"; do
+    local _src="$SRCDIR/$_script"
+    local _dst="$TARGET_BIN/$_script"
+    if [[ ! -f "$_src" ]]; then
+      echo "  WARNING: $_src not found, skipping."
+      continue
+    fi
+    if [[ -f "$_dst" ]]; then
+      echo "  Overwriting $_dst"
+    else
+      echo "  Installing $_dst"
+    fi
+    cp "$_src" "$_dst"
+    chmod +x "$_dst"
+  done
+}
+
+# ---------------------------------------------------------------------------
+# Prompt for a single config variable
+# ---------------------------------------------------------------------------
+_promptVar() {
+  local varName=$1
+  local description=$2
+  local current=$3
+  local value
+
+  echo ""
+  echo "  $varName"
+  echo "    $description"
+  if [[ -n "$current" ]]; then
+    read -rp "    Current: $current — press Enter to keep, or type new value: " value
+    if [[ -z "$value" ]]; then
+      value="$current"
+    fi
+  else
+    read -rp "    Enter value (or press Enter to leave blank): " value
+  fi
+  echo "$value"
+}
+
+# ---------------------------------------------------------------------------
+# Read current value of a variable from a conf file
+# ---------------------------------------------------------------------------
+_readVar() {
+  local file=$1
+  local varName=$2
+  # match VAR=value or VAR="value" or VAR='value', strip quotes
+  grep -E "^[[:space:]]*${varName}=" "$file" 2>/dev/null \
+    | tail -1 \
+    | sed -E "s/^[[:space:]]*${varName}=['\"]?//;s/['\"]?[[:space:]]*$//" \
+    || true
+}
+
+# ---------------------------------------------------------------------------
+# Write or update a variable in the conf file
+# ---------------------------------------------------------------------------
+_writeVar() {
+  local file=$1
+  local varName=$2
+  local value=$3
+
+  if grep -qE "^[[:space:]]*${varName}=" "$file" 2>/dev/null; then
+    # update existing line (handles both commented-out and active)
+    sed -i.bak -E "s|^([[:space:]]*)#?[[:space:]]*${varName}=.*|${varName}=\"${value}\"|" "$file"
+  else
+    echo "${varName}=\"${value}\"" >> "$file"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Configure the conf file interactively
+# ---------------------------------------------------------------------------
+_configureConf() {
+  local confFile="$TARGET_CONF/$CONF_NAME"
+  mkdir -p "$TARGET_CONF"
+
+  if [[ -f "$confFile" ]]; then
+    echo ""
+    echo "==> Existing configuration found: $confFile"
+    read -rp "    Review and update existing values? [Y/n]: " _ans
+    [[ "${_ans:-Y}" =~ ^[Nn] ]] && return
+  else
+    echo ""
+    echo "==> No configuration found at $confFile"
+    echo "    Creating from example..."
+    cp "$SRCDIR/$CONF_EXAMPLE" "$confFile"
+  fi
+
+  echo ""
+  echo "==> Configuring $confFile"
+  echo "    (Press Enter to keep existing/default values)"
+
+  # --- Shared ---
+  echo ""
+  echo "--- Shared settings ---"
+
+  _cur=$(_readVar "$confFile" "EC_AWS_PROFILE")
+  _val=$(_promptVar "EC_AWS_PROFILE" \
+    "AWS CLI named profile. Leave blank to use default." "$_cur")
+  [[ -n "$_val" ]] && _writeVar "$confFile" "EC_AWS_PROFILE" "$_val"
+
+  # --- ecConnect ---
+  echo ""
+  echo "--- ecConnect settings ---"
+
+  _cur=$(_readVar "$confFile" "EC_SSH_KEY")
+  _val=$(_promptVar "EC_SSH_KEY" \
+    'SSH private key, format: "-i /path/to/key.pem". Leave blank to be prompted at runtime.' "$_cur")
+  _writeVar "$confFile" "EC_SSH_KEY" "$_val"
+
+  _cur=$(_readVar "$confFile" "EC_SSH_FORWARD")
+  _val=$(_promptVar "EC_SSH_FORWARD" \
+    'Static SSH port forward, e.g. "-L 8080:localhost:80". Leave blank for none.' "$_cur")
+  _writeVar "$confFile" "EC_SSH_FORWARD" "$_val"
+
+  _cur=$(_readVar "$confFile" "EC_SSH_USER")
+  _val=$(_promptVar "EC_SSH_USER" \
+    "Remote SSH username (e.g. ec2-user). Leave blank to be prompted at runtime." "$_cur")
+  _writeVar "$confFile" "EC_SSH_USER" "$_val"
+
+  _cur=$(_readVar "$confFile" "EC_TAG_KEY")
+  _val=$(_promptVar "EC_TAG_KEY" \
+    "EC2 tag key to filter instances (e.g. Name, Environment)." "$_cur")
+  _writeVar "$confFile" "EC_TAG_KEY" "$_val"
+
+  _cur=$(_readVar "$confFile" "EC_TAG_VALUE")
+  _val=$(_promptVar "EC_TAG_VALUE" \
+    "EC2 tag value to filter instances. Supports wildcards (e.g. my-project-*)." "$_cur")
+  _writeVar "$confFile" "EC_TAG_VALUE" "$_val"
+
+  _cur=$(_readVar "$confFile" "EC_IP_CONNECTION")
+  _val=$(_promptVar "EC_IP_CONNECTION" \
+    "Connection method: private | public | ssm. Override at runtime with positional arg." "${_cur:-private}")
+  _writeVar "$confFile" "EC_IP_CONNECTION" "${_val:-private}"
+
+  # --- ecLaunch ---
+  echo ""
+  echo "--- ecLaunch settings ---"
+
+  _cur=$(_readVar "$confFile" "EC_VPC_ID")
+  _val=$(_promptVar "EC_VPC_ID" \
+    "Pin a specific VPC ID. Leave blank to auto-select or be prompted if multiple exist." "$_cur")
+  [[ -n "$_val" ]] && _writeVar "$confFile" "EC_VPC_ID" "$_val"
+
+  _cur=$(_readVar "$confFile" "EC_VPC_FILTER")
+  _val=$(_promptVar "EC_VPC_FILTER" \
+    "Tag Name filter to narrow VPC discovery (e.g. prod-*). Leave blank for no filter." "$_cur")
+  [[ -n "$_val" ]] && _writeVar "$confFile" "EC_VPC_FILTER" "$_val"
+
+  _cur=$(_readVar "$confFile" "EC_SUBNET_FILTER")
+  _val=$(_promptVar "EC_SUBNET_FILTER" \
+    "Tag Name filter for subnet discovery. Wildcards supported (e.g. *private*)." "${_cur:-*rivate*}")
+  _writeVar "$confFile" "EC_SUBNET_FILTER" "${_val:-*rivate*}"
+
+  _cur=$(_readVar "$confFile" "EC_SUBNET_ID")
+  _val=$(_promptVar "EC_SUBNET_ID" \
+    "Pin a specific subnet ID (overrides EC_SUBNET_FILTER). Leave blank to use filter." "$_cur")
+  [[ -n "$_val" ]] && _writeVar "$confFile" "EC_SUBNET_ID" "$_val"
+
+  _cur=$(_readVar "$confFile" "EC_INSTANCE_TYPE")
+  _val=$(_promptVar "EC_INSTANCE_TYPE" \
+    "EC2 instance type (e.g. t3.medium). Leave blank to be prompted at runtime. Override: -t flag." "$_cur")
+  _writeVar "$confFile" "EC_INSTANCE_TYPE" "$_val"
+
+  _cur=$(_readVar "$confFile" "EC_LAUNCH_TEMPLATE_NAME")
+  _val=$(_promptVar "EC_LAUNCH_TEMPLATE_NAME" \
+    "Launch template name. Leave blank to launch without a template." "$_cur")
+  _writeVar "$confFile" "EC_LAUNCH_TEMPLATE_NAME" "$_val"
+
+  _cur=$(_readVar "$confFile" "EC_LAUNCH_TEMPLATE_VERSION")
+  _val=$(_promptVar "EC_LAUNCH_TEMPLATE_VERSION" \
+    "Launch template version. '\$Default' uses the template default." "${_cur:-\$Default}")
+  _writeVar "$confFile" "EC_LAUNCH_TEMPLATE_VERSION" "${_val:-\$Default}"
+
+  _cur=$(_readVar "$confFile" "EC_NAME_PREFIX")
+  _val=$(_promptVar "EC_NAME_PREFIX" \
+    "Prefix for instance Name tag. Full name: <prefix><owner><-CPU|-GPU>." "${_cur:-compute-}")
+  _writeVar "$confFile" "EC_NAME_PREFIX" "${_val:-compute-}"
+
+  _cur=$(_readVar "$confFile" "EC_PROJECT")
+  _val=$(_promptVar "EC_PROJECT" \
+    "Project tag value for cost allocation. Required at launch. Override: -p flag." "$_cur")
+  _writeVar "$confFile" "EC_PROJECT" "$_val"
+
+  _cur=$(_readVar "$confFile" "EC_LAUNCH_TEMPLATE_IGNORE")
+  _val=$(_promptVar "EC_LAUNCH_TEMPLATE_IGNORE" \
+    "Space-separated template name prefixes to hide from selection list." "${_cur:-Batch-lt* agc*}")
+  _writeVar "$confFile" "EC_LAUNCH_TEMPLATE_IGNORE" "${_val:-Batch-lt* agc*}"
+
+  # Remove sed backup
+  rm -f "${confFile}.bak"
+
+  echo ""
+  echo "  Configuration saved to $confFile"
+
+  # --- ecUserScript ---
+  local userScript="$TARGET_CONF/$USERSCRIPT_NAME"
+  if [[ -f "$userScript" ]]; then
+    echo ""
+    echo "  ecUserScript found at $userScript — leaving untouched."
+  else
+    echo ""
+    read -rp "  No ecUserScript found. Copy example to $userScript? [y/N]: " _ans
+    if [[ "${_ans:-N}" =~ ^[Yy] ]]; then
+      cp "$SRCDIR/$USERSCRIPT_EXAMPLE" "$userScript"
+      chmod +x "$userScript"
+      echo "  Copied. Edit $userScript before launching instances."
+    fi
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+_parseArgs "$@"
+
+if [[ $CONFIGURE_ONLY -eq 1 ]]; then
+  _configureConf
+else
+  _deployScripts
+  _configureConf
+fi
+
+echo ""
+echo "Done."

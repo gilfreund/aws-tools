@@ -1,0 +1,55 @@
+#!/bin/bash
+# ecUserScript.example
+# Copy to /etc/aws-tools/ecUserScript (system-wide) or
+#         ~/.config/aws-tools/ecUserScript (user-level, takes precedence)
+#
+# This script runs as root on the instance at first boot via EC2 user data.
+# Output is logged to /var/log/cloud-init-output.log on the instance.
+
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# System updates
+# ---------------------------------------------------------------------------
+dnf update -y
+
+# ---------------------------------------------------------------------------
+# Install common tools
+# ---------------------------------------------------------------------------
+dnf install -y \
+  git \
+  htop \
+  tmux \
+  jq \
+  awscli
+
+# ---------------------------------------------------------------------------
+# Configure AWS region from instance metadata
+# ---------------------------------------------------------------------------
+TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+REGION=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/meta-data/placement/region)
+
+aws configure set region "$REGION"
+
+# ---------------------------------------------------------------------------
+# Mount any instance store volumes (NVMe ephemeral disks)
+# ---------------------------------------------------------------------------
+_disk=1
+for _dev in /dev/nvme1n1 /dev/nvme2n1 /dev/nvme3n1; do
+  if [[ -b "$_dev" ]]; then
+    _mp="/mnt/ephemeral${_disk}"
+    mkdir -p "$_mp"
+    mkfs.xfs "$_dev"
+    mount "$_dev" "$_mp"
+    echo "$_dev $_mp xfs defaults,noatime 0 0" >> /etc/fstab
+    chmod 1777 "$_mp"
+    echo "Mounted $_dev at $_mp"
+    ((_disk++))
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# Add any additional setup below
+# ---------------------------------------------------------------------------

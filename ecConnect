@@ -57,11 +57,12 @@ fi
 
 # Usage output
 usage() {
-  echo "Usage: ${BASH_SOURCE[0]} [ -L | --forward SPEC ] [ -f | --fork ] [ -u | --user USER ] [ -P | --profile PROFILE ] [ -h | --help ] [ public | private | ssm ] [ random | i-<id> | <number> | list ]
+  echo "Usage: ${BASH_SOURCE[0]} [ -L | --forward SPEC ] [ -f | --fork ] [ -u | --user USER ] [ -o | --owner OWNER ] [ -p | --profile PROFILE ] [ -h | --help ] [ public | private | ssm ] [ random | i-<id> | <number> | list ]
         -L | --forward SPEC      SSH port forward, e.g. 8080:localhost:80 (may be repeated)
         -f | --fork              Fork SSH into background (-f -N) after forwarding
         -u | --user USER         SSH username (overrides EC_SSH_USER from config)
-        -P | --profile PROFILE   AWS config profile to use (overrides EC_AWS_PROFILE from config)
+        -o | --owner OWNER       Filter instances by owner tag value
+        -p | --profile PROFILE   AWS config profile to use (overrides EC_AWS_PROFILE from config)
         -h | --help              Show this help
         public | private | ssm   Override EC_IP_CONNECTION from config"
   exit 0
@@ -69,18 +70,20 @@ usage() {
 
 # Parse options (gnu-getopt loaded by tools.rc on macOS)
 _ARGS=$(getopt --name ecConnect \
-               --options 'L:fhu:P:' \
-               --longoptions 'forward:,fork,help,user:,profile:' -- "$@") || usage
+               --options 'L:fhu:o:p:' \
+               --longoptions 'forward:,fork,help,user:,owner:,profile:' -- "$@") || usage
 eval "set -- $_ARGS"
 
 _SSH_FORWARD_ARGS=""
 _SSH_FORK=0
+_OWNER_FILTER=""
 while true; do
   case $1 in
     -L|--forward) _SSH_FORWARD_ARGS="$_SSH_FORWARD_ARGS -L $2"; shift 2 ;;
     -f|--fork)    _SSH_FORK=1; shift ;;
     -u|--user)    EC_SSH_USER=$2; shift 2 ;;
-    -P|--profile) shift 2 ;;  # already handled in tools.rc, skip
+    -o|--owner)   _OWNER_FILTER=$2; shift 2 ;;
+    -p|--profile) shift 2 ;;  # already handled in tools.rc, skip
     -h|--help)    usage ;;
     --)           shift; break ;;
   esac
@@ -121,24 +124,27 @@ if [[ -z "$EC_SSH_USER" ]]; then
 fi
 
 function getInstances() {
+    local _ownerFilter=""
+    [[ -n "$_OWNER_FILTER" ]] && _ownerFilter=" Name=tag:owner,Values=$_OWNER_FILTER"
+
     case $EC_IP_CONNECTION in
         public)
             # shellcheck disable=SC2086
             aws --output text ec2 describe-instances \
-            --filters Name=instance-state-name,Values=running Name=tag:"$EC_TAG_KEY",Values="$EC_TAG_VALUE" \
+            --filters Name=instance-state-name,Values=running Name=tag:"$EC_TAG_KEY",Values="$EC_TAG_VALUE"$_ownerFilter \
             --query "Reservations[*].Instances[*].[InstanceId,InstanceType,PublicIpAddress,PublicDnsName,Tags[?Key=='Name']|[0].Value]"
         ;;
         private)
             # shellcheck disable=SC2086
             aws --output text ec2 describe-instances \
-            --filters Name=instance-state-name,Values=running Name=tag:"$EC_TAG_KEY",Values="$EC_TAG_VALUE" \
+            --filters Name=instance-state-name,Values=running Name=tag:"$EC_TAG_KEY",Values="$EC_TAG_VALUE"$_ownerFilter \
             --query "Reservations[*].Instances[*].[InstanceId,InstanceType,PrivateIpAddress,PrivateDnsName,Tags[?Key=='Name']|[0].Value]"
         ;;
         ssm)
             # SSM connects by instance ID; IP columns are unused but kept for consistent field count
             # shellcheck disable=SC2086
             aws --output text ec2 describe-instances \
-            --filters Name=instance-state-name,Values=running Name=tag:"$EC_TAG_KEY",Values="$EC_TAG_VALUE" \
+            --filters Name=instance-state-name,Values=running Name=tag:"$EC_TAG_KEY",Values="$EC_TAG_VALUE"$_ownerFilter \
             --query "Reservations[*].Instances[*].[InstanceId,InstanceType,InstanceId,InstanceId,Tags[?Key=='Name']|[0].Value]"
         ;;
         *)

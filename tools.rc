@@ -2,7 +2,7 @@
 # tools.rc — shared bootstrap for ec-tools scripts
 # Source this file, do not execute it directly.
 
-CONFNAME="aws-tools.conf"
+CONFNAME="ecTools.conf"
 userConf="$HOME/.config/aws-tools/$CONFNAME"
 
 # Load configuration: /etc first, then ~/.config (user overrides system)
@@ -13,12 +13,12 @@ if [[ -e "$HOME/.config/aws-tools/$CONFNAME" ]]; then
   source "$HOME/.config/aws-tools/$CONFNAME"
 fi
 
-# Apply AWS profile: command-line -P/--profile takes precedence over
+# Apply AWS profile: command-line -p/--profile takes precedence over
 # EC_AWS_PROFILE from conf, which takes precedence over AWS_PROFILE env var.
-# Pre-parse $@ for -P/--profile before getopt runs, so all aws calls use it.
+# Pre-parse $@ for -p/--profile before getopt runs, so all aws calls use it.
 for _arg in "$@"; do
   case $_arg in
-    -P|--profile) _nextIsProfile=1 ;;
+    -p|--profile) _nextIsProfile=1 ;;
     *)
       if [[ "${_nextIsProfile:-0}" -eq 1 ]]; then
         EC_AWS_PROFILE="$_arg"

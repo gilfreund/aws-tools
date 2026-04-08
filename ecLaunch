@@ -4,96 +4,208 @@ source "${0%/*}/tools.rc"
 
 EC_NAME_PREFIX="${EC_NAME_PREFIX:-compute-}"
 
-if [[ -z "$EC_LAUNCH_TEMPLATE_NAME" ]]; then
-  echo "EC_LAUNCH_TEMPLATE_NAME is not set in any configuration file."
-  promptAndSave "EC_LAUNCH_TEMPLATE_NAME" "Enter the launch template name: "
-fi
+if [[ -n "$EC_LAUNCH_TEMPLATE_NAME" ]]; then
+  # Default ignore list for launch template listing (space-separated glob patterns)
+  EC_LAUNCH_TEMPLATE_IGNORE="${EC_LAUNCH_TEMPLATE_IGNORE:-Batch-lt* agc*}"
 
-# Default ignore list for launch template listing (space-separated glob patterns)
-EC_LAUNCH_TEMPLATE_IGNORE="${EC_LAUNCH_TEMPLATE_IGNORE:-Batch-lt* agc*}"
-
-# Resolve launch template ID from EC_LAUNCH_TEMPLATE_NAME, validate it exists
-_LAUNCHTEMPLATE=$(aws ec2 describe-launch-templates \
-    --launch-template-names "$EC_LAUNCH_TEMPLATE_NAME" \
-    --query "LaunchTemplates[].LaunchTemplateId" \
-    --output text 2>/dev/null) || true
-
-if [[ -z "$_LAUNCHTEMPLATE" ]]; then
-  echo "WARNING: Launch template '$EC_LAUNCH_TEMPLATE_NAME' not found."
-
-  _ignoreFilter=""
-  for _pattern in $EC_LAUNCH_TEMPLATE_IGNORE; do
-    _ignoreFilter="${_ignoreFilter}&&!starts_with(LaunchTemplateName,\`${_pattern%\*}\`)"
-  done
-  _ignoreFilter="${_ignoreFilter#&&}"
-
-  echo "Available launch templates:"
-  aws ec2 describe-launch-templates \
-    --query "LaunchTemplates[?${_ignoreFilter}].[LaunchTemplateName,LaunchTemplateId,DefaultVersionNumber]" \
-    --output table
-
-  promptAndSave "EC_LAUNCH_TEMPLATE_NAME" "Enter the correct launch template name: "
+  # Resolve launch template ID from EC_LAUNCH_TEMPLATE_NAME, validate it exists
   _LAUNCHTEMPLATE=$(aws ec2 describe-launch-templates \
       --launch-template-names "$EC_LAUNCH_TEMPLATE_NAME" \
       --query "LaunchTemplates[].LaunchTemplateId" \
       --output text 2>/dev/null) || true
-  if [[ -z "$_LAUNCHTEMPLATE" ]]; then
-    echo "Launch template '$EC_LAUNCH_TEMPLATE_NAME' still not found, exiting."
-    exit 1
-  fi
-fi
 
-# shellcheck disable=SC2016
-EC_LAUNCH_TEMPLATE_VERSION="${EC_LAUNCH_TEMPLATE_VERSION:-\$Default}"
+  if [[ -z "$_LAUNCHTEMPLATE" ]]; then
+    echo "WARNING: Launch template '$EC_LAUNCH_TEMPLATE_NAME' not found."
+
+    _ignoreFilter=""
+    for _pattern in $EC_LAUNCH_TEMPLATE_IGNORE; do
+      _ignoreFilter="${_ignoreFilter}&&!starts_with(LaunchTemplateName,\`${_pattern%\*}\`)"
+    done
+    _ignoreFilter="${_ignoreFilter#&&}"
+
+    echo "Available launch templates:"
+    aws ec2 describe-launch-templates \
+      --query "LaunchTemplates[?${_ignoreFilter}].[LaunchTemplateName,LaunchTemplateId,DefaultVersionNumber]" \
+      --output table
+
+    read -rp "Enter the correct launch template name (or press Enter to launch without a template): " _ltInput
+    if [[ -n "$_ltInput" ]]; then
+      EC_LAUNCH_TEMPLATE_NAME="$_ltInput"
+      _LAUNCHTEMPLATE=$(aws ec2 describe-launch-templates \
+          --launch-template-names "$EC_LAUNCH_TEMPLATE_NAME" \
+          --query "LaunchTemplates[].LaunchTemplateId" \
+          --output text 2>/dev/null) || true
+      if [[ -z "$_LAUNCHTEMPLATE" ]]; then
+        echo "Launch template '$EC_LAUNCH_TEMPLATE_NAME' still not found, exiting."
+        exit 1
+      fi
+    else
+      echo "Proceeding without a launch template."
+      EC_LAUNCH_TEMPLATE_NAME=""
+    fi
+  fi
+
+  if [[ -n "$_LAUNCHTEMPLATE" ]]; then
+    # shellcheck disable=SC2016
+    EC_LAUNCH_TEMPLATE_VERSION="${EC_LAUNCH_TEMPLATE_VERSION:-\$Default}"
+    _LAUNCHTEMPLATEARG="--launch-template LaunchTemplateId=${_LAUNCHTEMPLATE},Version=${EC_LAUNCH_TEMPLATE_VERSION}"
+  fi
+else
+  echo "No launch template configured, launching with direct parameters only."
+fi
 
 # Usage output
 usage() {
-  echo "Usage: ${BASH_SOURCE[0]} [ -t | --type TYPE ] [ -o | --owner OWNER ] [ -p | --project PROJECT ] [ -a | --ami AMI ] [ -P | --profile PROFILE ] [ -h | --help ]
+  echo "Usage: ${BASH_SOURCE[0]} [ -t | --type TYPE ] [ -o | --owner OWNER ] [ -a | --ami AMI ] [ -s | --subnet SUBNET-ID ] [ -v | --vpc VPC-ID ] [ -T | --tag Key=Value ] [ --replace-tags ] [ -p | --profile PROFILE ] [ --list-subnets ] [ -h | --help ]
         -t | --type TYPE         EC2 instance type (e.g. t3.medium)
         -o | --owner OWNER       Owner tag value (default: current user)
-        -p | --project NAME      Project tag value (required)
         -a | --ami AMI           AMI ID or '2023' for latest Amazon Linux 2023 (default: 2023)
-        -P | --profile PROFILE   AWS config profile to use (overrides EC_AWS_PROFILE from config)
+        -s | --subnet SUBNET-ID  Subnet ID to launch into (overrides EC_SUBNET_ID and EC_SUBNET_FILTER)
+        -v | --vpc VPC-ID        VPC ID to use (overrides EC_VPC_ID and EC_VPC_FILTER)
+        -T | --tag Key=Value     Additional tag to apply (may be repeated; appends to EC_EXTRA_TAGS by default)
+        --replace-tags           Replace EC_EXTRA_TAGS entirely with tags from -T flags
+        -p | --profile PROFILE   AWS config profile to use (overrides EC_AWS_PROFILE from config)
+        --list-subnets           List available subnets matching the current filter and exit
         -h | --help              Show this help"
   exit 0
 }
 
-# Get viable subnets (zones)
-subnets=$(aws --output text ec2 describe-subnets \
-  --filters "Name=tag:Name,Values=*rivate*" \
-  --query "Subnets[*].SubnetId")
+# Get viable subnets based on EC_SUBNET_FILTER scoped to _VPC_ID if set
+_getSubnets() {
+  local _filter="${EC_SUBNET_FILTER:-*rivate*}"
+  local _filters=("Name=tag:Name,Values=$_filter")
+  [[ -n "${_VPC_ID:-}" ]] && _filters+=("Name=vpc-id,Values=$_VPC_ID")
+  aws --output text ec2 describe-subnets \
+    --filters "${_filters[@]}" \
+    --query "Subnets[*].[SubnetId,AvailabilityZone,CidrBlock,Tags[?Key=='Name']|[0].Value]"
+}
 
-subnetCount=0
-for s in $subnets; do ((subnetCount = subnetCount + 1)); done
-if [[ $subnetCount -eq 0 ]]; then
-  echo "No subnets found, exiting"
-  exit 1
-fi
-networkNumber=$((1 + RANDOM % subnetCount))
-counter=0
-for subnet in $subnets; do
-  counter=$((counter + 1))
-  if [[ $counter -eq $networkNumber ]]; then break; fi
-done
+# List subnets in a readable table
+_listSubnets() {
+  local _filter="${EC_SUBNET_FILTER:-*rivate*}"
+  local _filters=("Name=tag:Name,Values=$_filter")
+  [[ -n "${_VPC_ID:-}" ]] && _filters+=("Name=vpc-id,Values=$_VPC_ID")
+  echo "Available subnets (filter: Name='$_filter'${_VPC_ID:+, VPC=$_VPC_ID}):"
+  aws --output table ec2 describe-subnets \
+    --filters "${_filters[@]}" \
+    --query "Subnets[*].{ID:SubnetId,AZ:AvailabilityZone,CIDR:CidrBlock,Name:Tags[?Key=='Name']|[0].Value}"
+}
+
+# Resolve VPC: EC_VPC_ID > EC_VPC_FILTER > single VPC auto-select > prompt
+_resolveVpc() {
+  if [[ -n "${_VPC_OVERRIDE:-}" ]]; then
+    _VPC_ID="$_VPC_OVERRIDE"
+    echo "Using VPC: $_VPC_ID (from command line)"
+    return
+  fi
+
+  if [[ -n "${EC_VPC_ID:-}" ]]; then
+    _VPC_ID="$EC_VPC_ID"
+    echo "Using VPC: $_VPC_ID (from EC_VPC_ID)"
+    return
+  fi
+
+  # Discover VPCs, optionally filtered by tag Name
+  local _vpcFilters=()
+  [[ -n "${EC_VPC_FILTER:-}" ]] && _vpcFilters+=("Name=tag:Name,Values=$EC_VPC_FILTER")
+
+  local _vpcData
+  _vpcData=$(aws --output text ec2 describe-vpcs \
+    ${_vpcFilters:+--filters "${_vpcFilters[@]}"} \
+    --query "Vpcs[*].[VpcId,CidrBlock,Tags[?Key=='Name']|[0].Value,IsDefault]")
+
+  local _vpcIds=() _vpcLines=()
+  while IFS=$'\t' read -r _vid _cidr _name _default; do
+    _vpcIds+=("$_vid")
+    _vpcLines+=("$_vid  $_cidr  ${_name:-<no name>}${_default:+  [default]}")
+  done <<< "$_vpcData"
+
+  local _count=${#_vpcIds[@]}
+
+  if [[ $_count -eq 0 ]]; then
+    echo "ERROR: No VPCs found${EC_VPC_FILTER:+ matching filter '$EC_VPC_FILTER'}."
+    exit 1
+  elif [[ $_count -eq 1 ]]; then
+    _VPC_ID="${_vpcIds[0]}"
+    echo "Using VPC: $_VPC_ID (only VPC available)"
+  else
+    echo "Multiple VPCs found. Select one:"
+    local _i=1
+    for _line in "${_vpcLines[@]}"; do
+      echo "  $_i) $_line"
+      ((_i++))
+    done
+    read -rp "Choice [1-$_count]: " _vpcChoice
+    if [[ "$_vpcChoice" -ge 1 && "$_vpcChoice" -le $_count ]]; then
+      _VPC_ID="${_vpcIds[$((_vpcChoice - 1))]}"
+      echo "Using VPC: $_VPC_ID"
+      read -rp "Save '$_VPC_ID' as default in $userConf? [y]es / [n]o: " _saveVpc
+      case $_saveVpc in
+        y|Y|yes)
+          mkdir -p "$HOME/.config/aws-tools"
+          echo "EC_VPC_ID=\"$_VPC_ID\"" >> "$userConf"
+          echo "EC_VPC_ID saved to $userConf"
+          ;;
+      esac
+    else
+      echo "Invalid choice, exiting."
+      exit 1
+    fi
+  fi
+}
 
 # Parse options (gnu-getopt loaded by tools.rc on macOS)
 ARGS=$(getopt --name ecLaunch \
-              --options 't:o:p:a:hP:' \
-              --longoptions 'type:,owner:,project:,ami:,help,profile:' -- "$@")
+              --options 't:o:a:hp:s:v:T:' \
+              --longoptions 'type:,owner:,ami:,help,profile:,subnet:,vpc:,tag:,replace-tags,list-subnets' -- "$@")
 if [[ "$?" -gt 0 ]]; then usage; fi
 eval "set -- $ARGS"
+_CLI_TAGS=""
+_REPLACE_TAGS=0
 while true; do
     case $1 in
-      -t|--type)    EC_INSTANCE_TYPE=$2; shift 2 ;;
-      -o|--owner)   _OWNERTAG=$2;        shift 2 ;;
-      -p|--project) _PROJECT=$2;         shift 2 ;;
-      -a|--ami)     _IMAGEID=$2;         shift 2 ;;
-      -P|--profile) shift 2 ;;  # already handled in tools.rc, skip
-      -h|--help)    usage ;;
-      --)           shift; break ;;
-      *)            echo "option $1 is unknown"; usage ;;
+      -t|--type)         EC_INSTANCE_TYPE=$2; shift 2 ;;
+      -o|--owner)        _OWNERTAG=$2;        shift 2 ;;
+      -a|--ami)          _IMAGEID=$2;         shift 2 ;;
+      -s|--subnet)       _SUBNET_OVERRIDE=$2; shift 2 ;;
+      -v|--vpc)          _VPC_OVERRIDE=$2;    shift 2 ;;
+      -T|--tag)          _CLI_TAGS="${_CLI_TAGS:+$_CLI_TAGS,}$2"; shift 2 ;;
+      --replace-tags)    _REPLACE_TAGS=1; shift ;;
+      --list-subnets)    _resolveVpc; _listSubnets; exit 0 ;;
+      -p|--profile)      shift 2 ;;
+      -h|--help)         usage ;;
+      --)                shift; break ;;
+      *)                 echo "option $1 is unknown"; usage ;;
     esac
 done
+
+# Resolve VPC first, then subnet within it
+_resolveVpc
+
+# Resolve subnet
+if [[ -n "${_SUBNET_OVERRIDE:-}" ]]; then
+  subnet="$_SUBNET_OVERRIDE"
+  echo "Using subnet: $subnet (from command line)"
+elif [[ -n "${EC_SUBNET_ID:-}" ]]; then
+  subnet="$EC_SUBNET_ID"
+  echo "Using subnet: $subnet (from EC_SUBNET_ID)"
+else
+  # Pick a random subnet matching EC_SUBNET_FILTER
+  _subnetList=()
+  while IFS=$'\t' read -r _sid _az _cidr _name; do
+    _subnetList+=("$_sid")
+  done < <(_getSubnets)
+
+  subnetCount=${#_subnetList[@]}
+  if [[ $subnetCount -eq 0 ]]; then
+    echo "No subnets found matching filter '${EC_SUBNET_FILTER:-*rivate*}'"
+    echo ""
+    _listSubnets
+    exit 1
+  fi
+  subnet="${_subnetList[$((RANDOM % subnetCount))]}"
+  echo "Using subnet: $subnet (randomly selected from $subnetCount matching)"
+fi
 
 _IMAGEID="${_IMAGEID:-2023}"
 
@@ -114,7 +226,7 @@ function promptInstanceType() {
   case $saveChoice in
     y|Y|yes)
       mkdir -p "$HOME/.config/aws-tools"
-      echo "export EC_INSTANCE_TYPE=\"$value\"" >> "$userConf"
+      echo "EC_INSTANCE_TYPE=\"$value\"" >> "$userConf"
       echo "EC_INSTANCE_TYPE saved to $userConf"
       ;;
     *)
@@ -124,9 +236,28 @@ function promptInstanceType() {
   export EC_INSTANCE_TYPE="$value"
 }
 
+# Resolve EC_INSTANCE_TYPE: -t flag takes precedence, then conf (single or multi-value)
 if [[ -z "$EC_INSTANCE_TYPE" ]]; then
   echo "EC_INSTANCE_TYPE is not set in any configuration file or provided as an argument."
   promptInstanceType "Enter the instance type: "
+else
+  # Count words in EC_INSTANCE_TYPE
+  read -ra _typeList <<< "$EC_INSTANCE_TYPE"
+  if [[ ${#_typeList[@]} -gt 1 ]]; then
+    echo "Multiple instance types configured. Select one:"
+    _i=1
+    for _t in "${_typeList[@]}"; do
+      echo "  $_i) $_t"
+      ((_i++))
+    done
+    read -rp "Choice [1-$((${#_typeList[@]}))]: " _typeChoice
+    if [[ "$_typeChoice" -ge 1 && "$_typeChoice" -le ${#_typeList[@]} ]]; then
+      EC_INSTANCE_TYPE="${_typeList[$((_typeChoice - 1))]}"
+    else
+      echo "Invalid choice, exiting."
+      exit 1
+    fi
+  fi
 fi
 
 # Validate EC_INSTANCE_TYPE exists in AWS
@@ -148,10 +279,11 @@ if [[ -z "$_validInstance" ]]; then
   fi
 fi
 
-_PROJECT="${_PROJECT:-${EC_PROJECT:-}}"
+_PROJECT="${EC_PROJECT:-}"
 if [[ -z "$_PROJECT" ]]; then
-  echo "no project assigned to instance"
-  usage
+  echo "EC_PROJECT is not set. A project tag is required for cost allocation."
+  promptAndSave "EC_PROJECT" "Enter the project name: "
+  _PROJECT="$EC_PROJECT"
 fi
 
 _OWNERTAG="${_OWNERTAG:-$(whoami)}"
@@ -235,17 +367,52 @@ if [[ -n $EC_LAUNCH_TEMPLATE_VERSION ]]; then
   _LAUNCHTEMPLATEVERSION=",Version=$EC_LAUNCH_TEMPLATE_VERSION"
 fi
 
+# Check for ecUserScript in the same directories as the conf file
+_USERDATA_ARG=""
+for _confDir in "/etc/aws-tools" "$HOME/.config/aws-tools"; do
+  if [[ -f "$_confDir/ecUserScript" ]]; then
+    _USERSCRIPT="$_confDir/ecUserScript"
+  fi
+done
+if [[ -n "$_USERSCRIPT" ]]; then
+  echo "Using user data script: $_USERSCRIPT"
+  _USERDATA_ARG="--user-data file://$_USERSCRIPT"
+fi
+
+# Build extra tags from conf (EC_EXTRA_TAGS) and/or command line (-T flags)
+# EC_EXTRA_TAGS format: "Key=Value,Key2=Value2"
+# --replace-tags replaces conf tags entirely with CLI tags
+if [[ $_REPLACE_TAGS -eq 1 ]]; then
+  _extraTagsRaw="${_CLI_TAGS:-}"
+else
+  _extraTagsRaw="${EC_EXTRA_TAGS:-}"
+  [[ -n "$_CLI_TAGS" ]] && _extraTagsRaw="${_extraTagsRaw:+$_extraTagsRaw,}$_CLI_TAGS"
+fi
+
+# Convert "Key=Value,Key2=Value2" → "{Key=Key,Value=Value},{Key=Key2,Value=Value2}"
+_extraTagJson=""
+if [[ -n "$_extraTagsRaw" ]]; then
+  IFS=',' read -ra _tagPairs <<< "$_extraTagsRaw"
+  for _pair in "${_tagPairs[@]}"; do
+    _k="${_pair%%=*}"
+    _v="${_pair#*=}"
+    _extraTagJson="${_extraTagJson:+$_extraTagJson,}{Key=$_k,Value=$_v}"
+  done
+  _extraTagJson=",$_extraTagJson"
+fi
+
 # shellcheck disable=SC2086
 InstanceID=$(aws --output text ec2 run-instances $extraParams \
-  --launch-template "LaunchTemplateId=${_LAUNCHTEMPLATE}${_LAUNCHTEMPLATEVERSION}" \
+  ${_LAUNCHTEMPLATEARG:+$_LAUNCHTEMPLATEARG} \
+  ${_USERDATA_ARG:+$_USERDATA_ARG} \
   --image-id "$_IMAGEID" \
   --instance-type "$EC_INSTANCE_TYPE" \
   --subnet-id "$subnet" --no-associate-public-ip-address \
   --hibernation-options Configured=true \
   --block-device-mappings "Ebs={VolumeSize=30},DeviceName=/dev/xvda" \
   --tag-specifications \
-    "ResourceType=instance,Tags=[{Key=Name,Value=${EC_NAME_PREFIX}${_OWNERTAG}${_NAMESUFFIX}},{Key=creator,Value=$_OWNERTAG},{Key=project,Value=$_PROJECT},{Key=Project,Value=$_PROJECT}]" \
-    "ResourceType=volume,Tags=[{Key=Name,Value=${EC_NAME_PREFIX}${_OWNERTAG}${_NAMESUFFIX}},{Key=creator,Value=$_OWNERTAG},{Key=project,Value=$_PROJECT},{Key=Project,Value=$_PROJECT}]" \
+    "ResourceType=instance,Tags=[{Key=Name,Value=${EC_NAME_PREFIX}${_OWNERTAG}${_NAMESUFFIX}},{Key=owner,Value=$_OWNERTAG},{Key=creator,Value=$_OWNERTAG},{Key=project,Value=$_PROJECT},{Key=Project,Value=$_PROJECT}${_extraTagJson}]" \
+    "ResourceType=volume,Tags=[{Key=Name,Value=${EC_NAME_PREFIX}${_OWNERTAG}${_NAMESUFFIX}},{Key=owner,Value=$_OWNERTAG},{Key=creator,Value=$_OWNERTAG},{Key=project,Value=$_PROJECT},{Key=Project,Value=$_PROJECT}${_extraTagJson}]" \
   --query "Instances[*].[InstanceId]")
 
 echo "Launching Image $_IMAGEID as Instance $InstanceID"

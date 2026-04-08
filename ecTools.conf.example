@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # vim:ft=sh
-# aws-tools.conf.example
-# Copy to /etc/aws-tools/aws-tools.conf (system-wide) or
-#         ~/.config/aws-tools/aws-tools.conf (user, takes precedence)
+# ecTools.conf.example
+# Copy to /etc/aws-tools/ecTools.conf (system-wide) or
+#         ~/.config/aws-tools/ecTools.conf (user, takes precedence)
 # and fill in your values.
 
 # =============================================================================
@@ -12,7 +12,7 @@
 # EC_AWS_PROFILE
 #   AWS CLI named profile to use for all API calls.
 #   If unset: uses AWS_PROFILE env var if set, otherwise the default profile.
-#   Override: -P / --profile flag on the command line of either script.
+#   Override: -p / --profile flag on the command line of either script.
 # EC_AWS_PROFILE=""
 
 # =============================================================================
@@ -25,8 +25,6 @@
 #   If unset: ecConnect will list private keys found in ~/.ssh and prompt you
 #             to pick one or enter a path manually. You will be offered the
 #             option to save the choice here for future runs.
-#   Override: -u / --user flag is not applicable here; key selection is
-#             interactive only when unset.
 # EC_SSH_KEY="-i ~/.ssh/your-key.pem"
 
 # EC_SSH_FORWARD
@@ -44,6 +42,7 @@ EC_SSH_FORWARD=""
 #             You will be offered the option to save the choice here.
 #   Override: -u / --user flag on the command line.
 EC_SSH_USER=""
+# leave blank to be prompted on first run (local user, IAM user, or custom)
 
 # EC_TAG_KEY / EC_TAG_VALUE
 #   EC2 instance tag used to filter which instances are listed and connectable.
@@ -69,18 +68,49 @@ EC_IP_CONNECTION=private
 # ecLaunch settings
 # =============================================================================
 
+# EC_VPC_ID
+#   Pin a specific VPC ID. If set, EC_VPC_FILTER is ignored.
+#   If unset and only one VPC exists, it is selected automatically.
+#   If multiple VPCs exist, ecLaunch will list them and prompt for selection.
+#   Override: -v / --vpc flag on the command line.
+# EC_VPC_ID="vpc-xxxxxxxxxxxxxxxxx"
+
+# EC_VPC_FILTER
+#   Tag Name filter to narrow VPC discovery when multiple VPCs exist.
+#   Supports wildcards (e.g. "prod-*").
+#   If unset: all VPCs are considered.
+#   Override: -v / --vpc flag on the command line to specify a VPC ID directly.
+# EC_VPC_FILTER=""
+
+# EC_SUBNET_FILTER
+#   Tag Name filter used to discover eligible subnets for instance launch.
+#   Supports wildcards (e.g. "*private*", "prod-private-*").
+#   If unset: defaults to "*rivate*" (matches any subnet with "rivate" in Name).
+#   Override: -s / --subnet flag on the command line to specify a subnet ID directly.
+EC_SUBNET_FILTER="*rivate*"
+
+# EC_SUBNET_ID
+#   Pin a specific subnet ID to always use for instance launch.
+#   If set, EC_SUBNET_FILTER is ignored.
+#   Override: -s / --subnet flag on the command line.
+# EC_SUBNET_ID="subnet-xxxxxxxxxxxxxxxxx"
+
 # EC_INSTANCE_TYPE
-#   The EC2 instance type to launch (e.g. t3.medium, r5d.large).
+#   The EC2 instance type(s) to launch.
+#   Single value: used directly (e.g. t3.medium)
+#   Multiple values: space-separated list — ecLaunch will present a menu to
+#                    select one at runtime (e.g. "t3.medium r5d.large p3.2xlarge")
 #   If unset: ecLaunch lists current-generation instance types and prompts.
 #             You will be offered the option to save the choice here.
-#   Override: -t / --type flag on the command line.
+#   Override: -t / --type flag on the command line (skips the menu).
 EC_INSTANCE_TYPE=""
 
 # EC_LAUNCH_TEMPLATE_NAME
 #   The name of the EC2 launch template to use as the base configuration.
 #   The template ID is resolved automatically from this name at runtime.
-#   If unset: ecLaunch prompts for a name and shows available templates.
-#             You will be offered the option to save the choice here.
+#   Optional: if unset or left blank, the instance is launched with direct
+#             parameters only (no template). If set but not found, ecLaunch
+#             will list available templates and offer to proceed without one.
 #   Override: no command-line override; edit this file to change the template.
 EC_LAUNCH_TEMPLATE_NAME=""
 
@@ -90,6 +120,14 @@ EC_LAUNCH_TEMPLATE_NAME=""
 #   If unset: defaults to '$Default'.
 #   Override: no command-line override; edit this file to pin a version number.
 EC_LAUNCH_TEMPLATE_VERSION='$Default'
+
+# EC_LAUNCH_TEMPLATE_IGNORE
+#   Space-separated list of launch template name prefixes to exclude from the
+#   interactive selection list (glob-style, trailing * is stripped internally).
+#   Useful for hiding system-managed templates (e.g. Batch, AGC) from the menu.
+#   If unset: defaults to "Batch-lt* agc*".
+#   Override: no command-line override; edit this file to change the ignore list.
+# EC_LAUNCH_TEMPLATE_IGNORE="Batch-lt* agc*"
 
 # EC_NAME_PREFIX
 #   Prefix applied to the Name tag of launched instances and volumes.
@@ -102,14 +140,21 @@ EC_NAME_PREFIX=""
 # EC_PROJECT
 #   Value for the "project" and "Project" tags applied to instances and volumes.
 #   Used for cost allocation and resource tracking.
-#   If unset: ecLaunch exits with an error — this value is required.
-#   Override: -p / --project flag on the command line.
+#   If unset: ecLaunch prompts interactively and saves the value here.
 EC_PROJECT=""
 
-# EC_LAUNCH_TEMPLATE_IGNORE
-#   Space-separated list of launch template name prefixes to exclude from the
-#   interactive selection list (glob-style, trailing * is stripped internally).
-#   Useful for hiding system-managed templates (e.g. Batch, AGC) from the menu.
-#   If unset: defaults to "Batch-lt* agc*".
-#   Override: no command-line override; edit this file to change the ignore list.
-# EC_LAUNCH_TEMPLATE_IGNORE="Batch-lt* agc*"
+# EC_EXTRA_TAGS
+#   Additional tags to apply to all launched instances and volumes.
+#   Format: comma-separated Key=Value pairs (e.g. "env=dev,team=platform,cost-center=123")
+#   If unset: no extra tags are applied beyond the built-in ones.
+#   Override: -T / --tag Key=Value on the command line (may be repeated, appends by default).
+#             Use --replace-tags to discard EC_EXTRA_TAGS and use only CLI tags.
+# EC_EXTRA_TAGS="env=dev,team=platform"
+
+# ecUserScript
+#   Optional shell script passed as EC2 user data on launch.
+#   Place a file named "ecUserScript" in the same directory as this conf file:
+#     /etc/aws-tools/ecUserScript        (system-wide)
+#     ~/.config/aws-tools/ecUserScript   (user-level, takes precedence)
+#   Must be a valid cloud-init / user-data script (e.g. starting with #!/bin/bash).
+#   If both locations have the file, the user-level one is used.
