@@ -9,7 +9,7 @@ if ! command -v bats &>/dev/null; then
   exit 1
 fi
 
-echo "Running ectools test suite..."
+echo "Running ecTools test suite..."
 echo ""
 
 bats --tap "$SCRIPT_DIR"/test_*.bats

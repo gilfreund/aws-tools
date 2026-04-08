@@ -252,31 +252,31 @@ teardown() {
     TARGET_CONF=''
     if [[ \$EUID -eq 0 ]]; then
       TARGET_BIN='/usr/local/bin'
-      TARGET_CONF='/etc/ectools'
+      TARGET_CONF='/etc/ecTools'
     else
       TARGET_BIN=\"\$HOME/bin\"
-      TARGET_CONF=\"\$HOME/.config/ectools\"
+      TARGET_CONF=\"\$HOME/.config/ecTools\"
     fi
     echo \"\$TARGET_BIN|\$TARGET_CONF\"
   "
   [ "$status" -eq 0 ]
   [[ "$output" == *"/bin|"* ]]
-  [[ "$output" == *"/.config/ectools"* ]]
+  [[ "$output" == *"/.config/ecTools"* ]]
 }
 
-@test "root user gets /usr/local/bin and /etc/ectools paths" {
+@test "root user gets /usr/local/bin and /etc/ecTools paths" {
   run bash -c "
     # Simulate EUID=0 by checking the logic directly
     _euid=0
     if [[ \$_euid -eq 0 ]]; then
       TARGET_BIN='/usr/local/bin'
-      TARGET_CONF='/etc/ectools'
+      TARGET_CONF='/etc/ecTools'
     else
       TARGET_BIN=\"\$HOME/bin\"
-      TARGET_CONF=\"\$HOME/.config/ectools\"
+      TARGET_CONF=\"\$HOME/.config/ecTools\"
     fi
     echo \"\$TARGET_BIN|\$TARGET_CONF\"
   "
   [ "$status" -eq 0 ]
-  [ "$output" = "/usr/local/bin|/etc/ectools" ]
+  [ "$output" = "/usr/local/bin|/etc/ecTools" ]
 }

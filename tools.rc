@@ -3,14 +3,14 @@
 # Source this file, do not execute it directly.
 
 CONFNAME="ecTools.conf"
-userConf="$HOME/.config/ectools/$CONFNAME"
+userConf="$HOME/.config/ecTools/$CONFNAME"
 
 # Load configuration: /etc first, then ~/.config (user overrides system)
-if [[ -e "/etc/ectools/$CONFNAME" ]]; then
-  source "/etc/ectools/$CONFNAME"
+if [[ -e "/etc/ecTools/$CONFNAME" ]]; then
+  source "/etc/ecTools/$CONFNAME"
 fi
-if [[ -e "$HOME/.config/ectools/$CONFNAME" ]]; then
-  source "$HOME/.config/ectools/$CONFNAME"
+if [[ -e "$HOME/.config/ecTools/$CONFNAME" ]]; then
+  source "$HOME/.config/ecTools/$CONFNAME"
 fi
 
 # Apply AWS profile: command-line -p/--profile takes precedence over
@@ -55,7 +55,7 @@ function promptAndSave() {
     echo "$varName is required, exiting."
     exit 1
   fi
-  mkdir -p "$HOME/.config/ectools"
+  mkdir -p "$HOME/.config/ecTools"
   echo "export $varName=\"$value\"" >> "$userConf"
   echo "$varName saved to $userConf"
   export "$varName=$value"

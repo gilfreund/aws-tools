@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ecSetup — install and configure ectools
+# ecSetup — install and configure ecTools
 # Usage: ecSetup [--configure] [--target DIR]
 
 set -euo pipefail
@@ -26,7 +26,7 @@ _parseArgs() {
       -h|--help)
         echo "Usage: ${BASH_SOURCE[0]} [--configure] [--target DIR] [-h | --help]"
         echo ""
-        echo "Install and configure ectools (ecConnect, ecLaunch, tools.rc)."
+        echo "Install and configure ecTools (ecConnect, ecLaunch, tools.rc)."
         echo ""
         echo "Options:"
         echo "  --configure      Only review and update the configuration file."
@@ -37,9 +37,9 @@ _parseArgs() {
         echo ""
         echo "Default install locations:"
         echo "  root user:  scripts → /usr/local/bin"
-        echo "              config  → /etc/ectools/ecTools.conf"
+        echo "              config  → /etc/ecTools/ecTools.conf"
         echo "  other user: scripts → ~/bin"
-        echo "              config  → ~/.config/ectools/ecTools.conf"
+        echo "              config  → ~/.config/ecTools/ecTools.conf"
         echo ""
         echo "Configuration file:"
         echo "  On first run, ecTools.conf.example is copied and you are"
@@ -63,10 +63,10 @@ _parseArgs() {
   if [[ -z "$TARGET_BIN" ]]; then
     if [[ $EUID -eq 0 ]]; then
       TARGET_BIN="/usr/local/bin"
-      TARGET_CONF="/etc/ectools"
+      TARGET_CONF="/etc/ecTools"
     else
       TARGET_BIN="${HOME}/bin"
-      TARGET_CONF="${HOME}/.config/ectools"
+      TARGET_CONF="${HOME}/.config/ecTools"
     fi
   fi
 }

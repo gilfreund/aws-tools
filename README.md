@@ -1,4 +1,4 @@
-# ectools
+# ecTools
 
 Bash scripts for connecting to and launching EC2 instances.
 
@@ -67,8 +67,8 @@ Usage: ecSetup [ --configure ] [ --target DIR ] [ -h | --help ]
 ```
 
 Default install locations:
-- root: scripts → `/usr/local/bin`, config → `/etc/ectools/ecTools.conf`
-- user: scripts → `~/bin`, config → `~/.config/ectools/ecTools.conf`
+- root: scripts → `/usr/local/bin`, config → `/etc/ecTools/ecTools.conf`
+- user: scripts → `~/bin`, config → `~/.config/ecTools/ecTools.conf`
 
 ## Configuration
 
@@ -81,14 +81,14 @@ Both scripts share a single configuration file. The easiest way to set it up:
 Or manually:
 
 ```bash
-mkdir -p ~/.config/ectools
-cp ecTools.conf.example ~/.config/ectools/ecTools.conf
+mkdir -p ~/.config/ecTools
+cp ecTools.conf.example ~/.config/ecTools/ecTools.conf
 ```
 
 Configuration is loaded in order, with later files taking precedence:
 
-1. `/etc/ectools/ecTools.conf` — system-wide defaults
-2. `~/.config/ectools/ecTools.conf` — user overrides
+1. `/etc/ecTools/ecTools.conf` — system-wide defaults
+2. `~/.config/ecTools/ecTools.conf` — user overrides
 
 See `ecTools.conf.example` for all available settings with descriptions.
 
