@@ -103,6 +103,18 @@ on launch. See `ecUserScript.example` for a starting point.
 - macOS only: `gnu-getopt` — `brew install gnu-getopt`
 - SSM mode only: [Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html)
 
+## Windows
+
+These scripts do not run natively on Windows. The recommended approach is **WSL2** (Windows Subsystem for Linux), which provides a full Linux environment:
+
+```powershell
+wsl --install
+```
+
+Once WSL2 is set up, install the AWS CLI and run the scripts from within the WSL terminal as you would on Linux.
+
+Git Bash and Cygwin are not supported — `getopt` long option handling and `/dev/tty` SSH sessions do not work reliably in those environments.
+
 ## License
 
 Copyright (C) 2019 Gil Freund
