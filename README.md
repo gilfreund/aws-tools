@@ -99,6 +99,31 @@ on launch. See `ecUserScript.example` for a starting point.
 
 ## Requirements
 
+### AWS Account
+
+The following IAM permissions are required depending on which scripts you use:
+
+**ecConnect** (read-only):
+- `ec2:DescribeInstances` — list and filter running instances
+- `sts:GetCallerIdentity` — verify credentials on startup
+- `ssm:StartSession` *(SSM mode only)* — open a Session Manager tunnel
+
+**ecLaunch** (read + write):
+- `sts:GetCallerIdentity` — verify credentials on startup
+- `ec2:DescribeVpcs` — discover available VPCs
+- `ec2:DescribeSubnets` — discover available subnets
+- `ec2:DescribeLaunchTemplates` — resolve launch template ID by name
+- `ec2:DescribeInstanceTypes` — validate instance type and detect storage/accelerators
+- `ec2:DescribeImages` — resolve AMI when not using the 2023 SSM parameter
+- `ec2:RunInstances` — launch the instance
+- `ssm:GetParameter` — resolve the latest Amazon Linux 2023 AMI ID
+- `iam:PassRole` *(if the launch template specifies an instance profile)*
+
+A minimal example IAM policy for `ecLaunch` is available in `docs/iam-policy-ecLaunch.json`.
+A minimal example IAM policy for `ecConnect` is available in `docs/iam-policy-ecConnect.json`.
+
+### Software
+
 - [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html) configured with valid credentials (IAM user, SSO/Identity Center, or EC2 instance role)
 - `bash` 4.0+
 - `curl` (for EC2 instance metadata)

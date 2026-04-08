@@ -1,0 +1,28 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "VerifyIdentity",
+      "Effect": "Allow",
+      "Action": "sts:GetCallerIdentity",
+      "Resource": "*"
+    },
+    {
+      "Sid": "ListInstances",
+      "Effect": "Allow",
+      "Action": "ec2:DescribeInstances",
+      "Resource": "*"
+    },
+    {
+      "Sid": "SSMTunnel",
+      "Effect": "Allow",
+      "Action": "ssm:StartSession",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "ssm:resourceTag/Name": "*"
+        }
+      }
+    }
+  ]
+}
