@@ -1,235 +1,249 @@
 #!/usr/bin/env bash
+# shellcheck source=./tools.rc
+source "${0%/*}/tools.rc"
 
-NAMEPREFIX="compute-"
-LaunchTemplateName="ComputeBase"
-function getMetaData {
-	local TOKEN
-	TOKEN=$(curl --max-time 10 --silent --request PUT "http://169.254.169.254/latest/api/token"  \
-		--header "X-aws-ec2-metadata-token-ttl-seconds: 21600")
-	if [[ -n $TOKEN ]] ; then
-		local tagValue
-		tagValue=$(curl --max-time 10 --silent --fail \
-			--header "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/$1) \
-			&& echo "$tagValue"
-	else
-			exit 1
-	fi
-}
-if [[ -z $AVAILABILITY_ZONE ]]; then 
-	AVAILABILITY_ZONE=$(getMetaData "placement/availability-zone")
-	export AVAILABILITY_ZONE
-	export AWS_DEFAULT_REGION=${AVAILABILITY_ZONE:0:9}
+EC_NAME_PREFIX="${EC_NAME_PREFIX:-compute-}"
+
+if [[ -z "$EC_LAUNCH_TEMPLATE_NAME" ]]; then
+  echo "EC_LAUNCH_TEMPLATE_NAME is not set in any configuration file."
+  promptAndSave "EC_LAUNCH_TEMPLATE_NAME" "Enter the launch template name: "
 fi
-AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
 
-LAUNCHTEMPLATE=$(aws ec2 describe-launch-templates \
-    --launch-template-names "$LaunchTemplateName" \
+# Default ignore list for launch template listing (space-separated glob patterns)
+EC_LAUNCH_TEMPLATE_IGNORE="${EC_LAUNCH_TEMPLATE_IGNORE:-Batch-lt* agc*}"
+
+# Resolve launch template ID from EC_LAUNCH_TEMPLATE_NAME, validate it exists
+_LAUNCHTEMPLATE=$(aws ec2 describe-launch-templates \
+    --launch-template-names "$EC_LAUNCH_TEMPLATE_NAME" \
     --query "LaunchTemplates[].LaunchTemplateId" \
-    --output text) 
+    --output text 2>/dev/null) || true
+
+if [[ -z "$_LAUNCHTEMPLATE" ]]; then
+  echo "WARNING: Launch template '$EC_LAUNCH_TEMPLATE_NAME' not found."
+
+  _ignoreFilter=""
+  for _pattern in $EC_LAUNCH_TEMPLATE_IGNORE; do
+    _ignoreFilter="${_ignoreFilter}&&!starts_with(LaunchTemplateName,\`${_pattern%\*}\`)"
+  done
+  _ignoreFilter="${_ignoreFilter#&&}"
+
+  echo "Available launch templates:"
+  aws ec2 describe-launch-templates \
+    --query "LaunchTemplates[?${_ignoreFilter}].[LaunchTemplateName,LaunchTemplateId,DefaultVersionNumber]" \
+    --output table
+
+  promptAndSave "EC_LAUNCH_TEMPLATE_NAME" "Enter the correct launch template name: "
+  _LAUNCHTEMPLATE=$(aws ec2 describe-launch-templates \
+      --launch-template-names "$EC_LAUNCH_TEMPLATE_NAME" \
+      --query "LaunchTemplates[].LaunchTemplateId" \
+      --output text 2>/dev/null) || true
+  if [[ -z "$_LAUNCHTEMPLATE" ]]; then
+    echo "Launch template '$EC_LAUNCH_TEMPLATE_NAME' still not found, exiting."
+    exit 1
+  fi
+fi
+
 # shellcheck disable=SC2016
-LAUNCHTEMPLATEVERSION='$Default'
+EC_LAUNCH_TEMPLATE_VERSION="${EC_LAUNCH_TEMPLATE_VERSION:-\$Default}"
 
 # Usage output
 usage() {
-  echo "Usage: ${BASH_SOURCE[0]} [ -t | --type INSTANCETYPE ] [ -o | --owner OWNERTAG ] [ -p | --project PROJECT] [ -a | --ami AMI ]
-        If unspcified:
-        OWNERTAG is local user
-        AMI is the default Amazon Linux AMI, specify 2023 for the newest version."
-  exit 2
+  echo "Usage: ${BASH_SOURCE[0]} [ -t | --type TYPE ] [ -o | --owner OWNER ] [ -p | --project PROJECT ] [ -a | --ami AMI ] [ -h | --help ]
+        -t | --type TYPE      EC2 instance type (e.g. t3.medium)
+        -o | --owner OWNER    Owner tag value (default: current user)
+        -p | --project NAME   Project tag value (required)
+        -a | --ami AMI        AMI ID or '2023' for latest Amazon Linux 2023 (default: 2023)
+        -h | --help           Show this help"
+  exit 0
 }
 
 # Get viable subnets (zones)
 subnets=$(aws --output text ec2 describe-subnets \
   --filters "Name=tag:Name,Values=*rivate*" \
   --query "Subnets[*].SubnetId")
-networkNumber=$((1 + $RANDOM % 3))
+
+subnetCount=0
+for s in $subnets; do ((subnetCount = subnetCount + 1)); done
+if [[ $subnetCount -eq 0 ]]; then
+  echo "No subnets found, exiting"
+  exit 1
+fi
+networkNumber=$((1 + RANDOM % subnetCount))
 counter=0
-for subnet in $subnets ; do
-  counter=$((counter = counter + 1))
-  if [[ $counter -eq $networkNumber ]] ; then
-    break
-  fi
+for subnet in $subnets; do
+  counter=$((counter + 1))
+  if [[ $counter -eq $networkNumber ]]; then break; fi
 done
 
-# A Hack for MacOS incompatible getop
-if command -v sw_vers ; then 
-	if [[ $(sw_vers -productName) == macOS ]] ; then
-		if [[ -d /usr/local/opt/gnu-getopt/bin ]] ; then
-      # for Intel Mac
-			PATH="/usr/local/opt/gnu-getopt/bin:$PATH"
-  	elif [[ -d /opt/homebrew/opt/gnu-getopt/bin ]] ; then
-      # For Apple Silcon Mac
-      PATH="/opt/homebrew/opt/gnu-getopt/bin:$PATH"
-    else
-    	echo you need to install gnu getopt
-    	exit 1
-  	fi
-	fi
-fi
-
-# Get and check parameters
-ARGS=$(getopt --name ec2launch \
-              --options 't:o:p:a:' \
-              --longoptions 'type:,owner:,project:,ami:' -- "$@")
-
-VALID_ARGUMENTS="$?"
-if [[ "$VALID_ARGUMENTS" -gt "0" ]]; then
-  usage
-fi
+# Parse options (gnu-getopt loaded by tools.rc on macOS)
+ARGS=$(getopt --name ecLaunch \
+              --options 't:o:p:a:h' \
+              --longoptions 'type:,owner:,project:,ami:,help' -- "$@")
+if [[ "$?" -gt 0 ]]; then usage; fi
 eval "set -- $ARGS"
 while true; do
     case $1 in
-      -t|--type)
-            INSTANCETYPE=${2}; shift 2;;
-      -o|--owner)
-            OWNERTAG=$2; shift 2;;
-      -p|--project)
-            PROJECT=$2; shift 2;;
-      -a|--ami)
-            IMAGEID=$2; shift 2;;
-      --)  shift; break;;
-      *)   echo "option $1 is unknown" ; usage; exit 1;;           # error
+      -t|--type)    EC_INSTANCE_TYPE=$2; shift 2 ;;
+      -o|--owner)   _OWNERTAG=$2;        shift 2 ;;
+      -p|--project) _PROJECT=$2;         shift 2 ;;
+      -a|--ami)     _IMAGEID=$2;         shift 2 ;;
+      -h|--help)    usage ;;
+      --)           shift; break ;;
+      *)            echo "option $1 is unknown"; usage ;;
     esac
 done
 
-if [[ -z $IMAGEID ]] ; then
-  IMAGEID="2023"
+_IMAGEID="${_IMAGEID:-2023}"
+
+function promptInstanceType() {
+  local prompt=$1
+  local value
+  echo "Available instance types (current generation):"
+  aws ec2 describe-instance-types \
+    --filters "Name=current-generation,Values=true" \
+    --query "sort_by(InstanceTypes, &InstanceType)[].InstanceType" \
+    --output table
+  read -rp "$prompt" value
+  if [[ -z "$value" ]]; then
+    echo "EC_INSTANCE_TYPE is required, exiting."
+    exit 1
+  fi
+  read -rp "Save '$value' as default in $userConf? [y]es / [n]o (just this time): " saveChoice
+  case $saveChoice in
+    y|Y|yes)
+      mkdir -p "$HOME/.config/aws-tools"
+      echo "export EC_INSTANCE_TYPE=\"$value\"" >> "$userConf"
+      echo "EC_INSTANCE_TYPE saved to $userConf"
+      ;;
+    *)
+      echo "Using '$value' for this session only."
+      ;;
+  esac
+  export EC_INSTANCE_TYPE="$value"
+}
+
+if [[ -z "$EC_INSTANCE_TYPE" ]]; then
+  echo "EC_INSTANCE_TYPE is not set in any configuration file or provided as an argument."
+  promptInstanceType "Enter the instance type: "
 fi
-if [[ -z $INSTANCETYPE ]] ; then
-  echo no instance type provided
+
+# Validate EC_INSTANCE_TYPE exists in AWS
+_validInstance=$(aws ec2 describe-instance-types \
+  --instance-types "$EC_INSTANCE_TYPE" \
+  --query "InstanceTypes[].InstanceType" \
+  --output text 2>/dev/null) || true
+
+if [[ -z "$_validInstance" ]]; then
+  echo "WARNING: Instance type '$EC_INSTANCE_TYPE' not found in region ${AWS_DEFAULT_REGION}."
+  promptInstanceType "Enter a valid instance type: "
+  _validInstance=$(aws ec2 describe-instance-types \
+    --instance-types "$EC_INSTANCE_TYPE" \
+    --query "InstanceTypes[].InstanceType" \
+    --output text 2>/dev/null) || true
+  if [[ -z "$_validInstance" ]]; then
+    echo "Instance type '$EC_INSTANCE_TYPE' still not found, exiting."
+    exit 1
+  fi
+fi
+
+_PROJECT="${_PROJECT:-${EC_PROJECT:-}}"
+if [[ -z "$_PROJECT" ]]; then
+  echo "no project assigned to instance"
   usage
 fi
-if [[ -z $PROJECT ]] ; then
-  echo no project assigned to instance
-  usage
-fi
-PROJECT
-# shellcheck source=path/to/file
-# Get IAM user          
-if [[ -z $OWNERTAG ]] ; then
-  OWNERTAG=$(whoami)
-fi
+
+_OWNERTAG="${_OWNERTAG:-$(whoami)}"
+
 # Get Requested instance information:
-while read -r Architecture vcpu Memory StorageTotal StorageDiskSize StorageDiskCount StorageDiskNVME GPU_Manufacturer GPU_Name GPU_Number GPU_Memory FPGA_Manufacturer FPGA_Name FPGA_Number FPGA_Memory INF_Manufacturer INF_Name INF_Number SupportedVirtualizationType ; do
+while read -r Architecture vcpu Memory StorageTotal StorageDiskSize StorageDiskCount StorageDiskNVME GPU_Manufacturer GPU_Name GPU_Number GPU_Memory FPGA_Manufacturer FPGA_Name FPGA_Number FPGA_Memory INF_Manufacturer INF_Name INF_Number SupportedVirtualizationType; do
 
   echo "Requested $Architecture Instance with $vcpu vCPU, $Memory Memory"
-  if [[ $StorageDiskCount -gt 0 ]] ; then
-    echo "The $INSTANCETYPE has $StorageDiskCount x $StorageDiskSize GB disks, Total of $StorageTotal of instance storage, NVME is $StorageDiskNVME"
-    for ((disk = 1 ; disk <= StorageDiskCount ; disk++)); do
-      printf -v DiskLetter "\x$(printf %x $((${disk}+97)))"
+  if [[ $StorageDiskCount -gt 0 ]]; then
+    echo "The $EC_INSTANCE_TYPE has $StorageDiskCount x $StorageDiskSize GB disks, Total of $StorageTotal of instance storage, NVME is $StorageDiskNVME"
+    for ((disk = 1; disk <= StorageDiskCount; disk++)); do
+      printf -v DiskLetter "\x$(printf %x $((disk+97)))"
       ephemeral=$((disk - 1))
-      if [[ $disk -eq 1 ]] ; then
+      if [[ $disk -eq 1 ]]; then
         DiskMapping="DeviceName=/dev/sd$DiskLetter,VirtualName=ephemeral$ephemeral"
-      elif [[ $disk -gt 1 ]] ; then
+      else
         DiskMapping="$DiskMapping DeviceName=/dev/sd$DiskLetter,VirtualName=ephemeral$ephemeral"
       fi
-    done 
-      extraParams="--block-device-mappings $DiskMapping"
+    done
+    extraParams="--block-device-mappings $DiskMapping"
   else
-    echo "The $INSTANCETYPE has has no instance storage"
+    echo "The $EC_INSTANCE_TYPE has no instance storage"
   fi
 
-  excelerator="None"
-  if [[ $GPU_Manufacturer != "None" ]] ; then
-    excelerator="$GPU_Manufacturer"
+  accelerator="None"
+  if [[ $GPU_Manufacturer != "None" ]]; then
+    accelerator="$GPU_Manufacturer"
     echo "and $GPU_Number $GPU_Manufacturer $GPU_Name and $GPU_Memory Memory"
   elif [[ $FPGA_Manufacturer != "None" ]]; then
-    excelerator="FPGA"
+    accelerator="FPGA"
     echo "and $FPGA_Number $FPGA_Manufacturer $FPGA_Name and $FPGA_Memory Memory"
   elif [[ $INF_Manufacturer != "None" ]]; then
-    excelerator="Inference"
-    echo "and $FPGA_Number $INF_Number $INF_Name"
-  else
-    excelerator="None"
+    accelerator="Inference"
+    echo "and $INF_Number $INF_Manufacturer $INF_Name"
   fi
 
-  ## Get AMI
   case $Architecture in
     i386 | x86_64)
-      case $excelerator in
+      case $accelerator in
         NVIDIA | Inference)
           ## For accelerated see https://aws.amazon.com/releasenotes/aws-deep-learning-ami-catalog/
-          if [[ $IMAGEID == "2023" ]] ; then
-            IMAGEID=$(aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64 \
+          if [[ $_IMAGEID == "2023" ]]; then
+            _IMAGEID=$(aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64 \
               --query Parameter.Value --output text)
           else
-            IMAGEID=$(aws ec2 describe-images \
+            _IMAGEID=$(aws ec2 describe-images \
               --owners amazon \
               --filters 'Name=name,Values=Deep?Learning?Base?AMI?(Amazon?Linux?2)?Version???.?' "Name=state,Values=available" \
               --query "reverse(sort_by(Images,&CreationDate))[:1].ImageId" --output text)
           fi
-          NAMESUFFIX="-GPU"
-          ;;      
+          _NAMESUFFIX="-GPU"
+          ;;
         None)
-          if [[ $IMAGEID == "2023" ]] ; then
-            IMAGEID=$(aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64 \
+          if [[ $_IMAGEID == "2023" ]]; then
+            _IMAGEID=$(aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64 \
               --query Parameter.Value --output text)
           else
-            IMAGEID=$(aws ec2 describe-images \
-            --owners amazon \
-            --filters "Name=name,Values=amzn2-ami-$SupportedVirtualizationType-2.0.????????.?-$Architecture-gp2" "Name=state,Values=available" \
-            --query "reverse(sort_by(Images,&CreationDate))[:1].[ImageId]" --output text)
+            _IMAGEID=$(aws ec2 describe-images \
+              --owners amazon \
+              --filters "Name=name,Values=amzn2-ami-$SupportedVirtualizationType-2.0.????????.?-$Architecture-gp2" "Name=state,Values=available" \
+              --query "reverse(sort_by(Images,&CreationDate))[:1].[ImageId]" --output text)
           fi
-          NAMESUFFIX="-CPU"
+          _NAMESUFFIX="-CPU"
           ;;
         *)
-          echo "No support for $excelerator on $Architecture yet, exiting"
+          echo "No support for $accelerator on $Architecture yet, exiting"
           exit 0
           ;;
       esac
       ;;
-    arm64)
-      echo "No Support for arm64 yet, exiting"
-      exit 0
-      # case $excelerator in
-      #   NVIDIA)
-      #     IMAGEID=$(aws ec2 describe-images \
-      #       --owners amazon \
-      #       --filters "Name=name,Values=Deep Learning AMI*" "Name=state,Values=available" \
-      #       --query 'reverse(sort_by(Images,&CreationDate))[:1].[ImageId]')
-      #     ;;
-      #   None)
-      #     IMAGEID=$(aws ec2 describe-images \
-      #       --owners amazon \
-      #       --filters "Name=name,Values=amzn2-ami-$SupportedVirtualizationType-2.0.????????.?-$Architecture-gp2" 'Name=state,Values=available' \
-      #       --query 'reverse(sort_by(Images,&CreationDate))[:1].[ImageId]')
-      #     ;;
-      #   *)
-      #     echo "No support for $excelerator on $Architecture yet, exiting"
-      #     exit 0
-      #     ;;
-      # esac
-      ;;
-    x86_64_mac)
-      echo "No Support for Mac X64 yet, exiting"
-      exit 0
-      ;;
-    *)
-      echo "Unknown architecture, exiting"
-      exit 0
-      ;;
+    arm64)      echo "No Support for arm64 yet, exiting";    exit 0 ;;
+    x86_64_mac) echo "No Support for Mac X64 yet, exiting"; exit 0 ;;
+    *)          echo "Unknown architecture, exiting";        exit 0 ;;
   esac
 
-done < <(aws --output text ec2 describe-instance-types --instance-types $INSTANCETYPE \
-    --query InstanceTypes[].[ProcessorInfo.SupportedArchitectures[0],VCpuInfo.DefaultVCpus,MemoryInfo.SizeInMiB,InstanceStorageInfo.TotalSizeInGB,InstanceStorageInfo.Disks[0].SizeInGB,InstanceStorageInfo.Disks[0].Count,InstanceStorageInfo.NvmeSupport,GpuInfo.Gpus[0].Manufacturer,GpuInfo.Gpus[0].Name,GpuInfo.Gpus[0].Count,GpuInfo.TotalGpuMemoryInMiB,FpgaInfo.Fpgas[0].Manufacturer,FpgaInfo.Fpgas[0].Name,FpgaInfo.Fpgas[0].Count,FpgaInfo.TotalFpgaMemoryInMiB,InferenceAcceleratorInfo.Accelerators[0].Manufacturer,InferenceAcceleratorInfo.Accelerators[0].Name,InferenceAcceleratorInfo.Accelerators[0].Count,SupportedVirtualizationTypes[0]])
+done < <(aws --output text ec2 describe-instance-types \
+    --instance-types "$EC_INSTANCE_TYPE" \
+    --query "InstanceTypes[].[ProcessorInfo.SupportedArchitectures[0],VCpuInfo.DefaultVCpus,MemoryInfo.SizeInMiB,InstanceStorageInfo.TotalSizeInGB,InstanceStorageInfo.Disks[0].SizeInGB,InstanceStorageInfo.Disks[0].Count,InstanceStorageInfo.NvmeSupport,GpuInfo.Gpus[0].Manufacturer,GpuInfo.Gpus[0].Name,GpuInfo.Gpus[0].Count,GpuInfo.TotalGpuMemoryInMiB,FpgaInfo.Fpgas[0].Manufacturer,FpgaInfo.Fpgas[0].Name,FpgaInfo.Fpgas[0].Count,FpgaInfo.TotalFpgaMemoryInMiB,InferenceAcceleratorInfo.Accelerators[0].Manufacturer,InferenceAcceleratorInfo.Accelerators[0].Name,InferenceAcceleratorInfo.Accelerators[0].Count,SupportedVirtualizationTypes[0]]")
 
-if [[ -n $LAUNCHTEMPLATEVERSION ]]; then
-  LAUNCHTEMPLATEVERSION=",Version=$LAUNCHTEMPLATEVERSION"
+if [[ -n $EC_LAUNCH_TEMPLATE_VERSION ]]; then
+  _LAUNCHTEMPLATEVERSION=",Version=$EC_LAUNCH_TEMPLATE_VERSION"
 fi
 
-
+# shellcheck disable=SC2086
 InstanceID=$(aws --output text ec2 run-instances $extraParams \
-  --launch-template LaunchTemplateId=${LAUNCHTEMPLATE}${LAUNCHTEMPLATEVERSION} \
-  --image-id $IMAGEID \
-  --instance-type $INSTANCETYPE \
-  --subnet-id $subnet  --no-associate-public-ip-address \
+  --launch-template "LaunchTemplateId=${_LAUNCHTEMPLATE}${_LAUNCHTEMPLATEVERSION}" \
+  --image-id "$_IMAGEID" \
+  --instance-type "$EC_INSTANCE_TYPE" \
+  --subnet-id "$subnet" --no-associate-public-ip-address \
   --hibernation-options Configured=true \
-  --block-device-mappings Ebs={VolumeSize=30},DeviceName=/dev/xvda \
+  --block-device-mappings "Ebs={VolumeSize=30},DeviceName=/dev/xvda" \
   --tag-specifications \
-  	"ResourceType=instance,Tags=[{Key=Name,Value=$NAMEPREFIX$OWNERTAG$NAMESUFFIX},{Key=creator,Value=$OWNERTAG},{Key=project,Value=$PROJECT},{Key=Project,Value=$PROJECT}]" \
-  	"ResourceType=volume,Tags=[{Key=Name,Value=$NAMEPREFIX$OWNERTAG$NAMESUFFIX},{Key=creator,Value=$OWNERTAG},{Key=project,Value=$PROJECT},{Key=Project,Value=$PROJECT}]" \
-  --query Instances[*].[InstanceId] )
+    "ResourceType=instance,Tags=[{Key=Name,Value=${EC_NAME_PREFIX}${_OWNERTAG}${_NAMESUFFIX}},{Key=creator,Value=$_OWNERTAG},{Key=project,Value=$_PROJECT},{Key=Project,Value=$_PROJECT}]" \
+    "ResourceType=volume,Tags=[{Key=Name,Value=${EC_NAME_PREFIX}${_OWNERTAG}${_NAMESUFFIX}},{Key=creator,Value=$_OWNERTAG},{Key=project,Value=$_PROJECT},{Key=Project,Value=$_PROJECT}]" \
+  --query "Instances[*].[InstanceId]")
 
-echo "Launching Image $IMAGEID as Instance $InstanceID"
-
-
+echo "Launching Image $_IMAGEID as Instance $InstanceID"

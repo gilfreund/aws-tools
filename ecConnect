@@ -1,83 +1,185 @@
 #!/usr/bin/env bash
-# shellcheck disable=2086
-# Quotes and aws command do not mix well
-# shellcheck source=./aws.functions
-source ${0%/*}/aws.functions
-# shellcheck source=./ecConnect.vars
-VARS="${0%/}".vars
-source $VARS
-if [[ -e $VARS.local ]] ; then
-  source $VARS.local
+# shellcheck source=./tools.rc
+source "${0%/*}/tools.rc"
+
+if [[ -z "$EC_SSH_KEY" ]]; then
+  echo "EC_SSH_KEY is not set. Select a private key to use:"
+
+  # List private keys in ~/.ssh (files without .pub extension that have a matching .pub)
+  _keys=()
+  for _k in "$HOME/.ssh/"*; do
+    [[ -f "$_k" && -f "${_k}.pub" ]] && _keys+=("$_k")
+  done
+
+  _i=1
+  for _k in "${_keys[@]}"; do
+    echo "  $_i) $_k"
+    ((_i++))
+  done
+  echo "  $_i) Other (manual input)"
+
+  read -rp "Choice [1-$_i]: " _keyChoice
+  if [[ "$_keyChoice" -ge 1 && "$_keyChoice" -lt $_i ]]; then
+    keyPath="${_keys[$((_keyChoice - 1))]}"
+  elif [[ "$_keyChoice" -eq $_i ]]; then
+    read -rp "Enter the path to your SSH key: " keyPath
+    if [[ -z "$keyPath" ]]; then
+      echo "No SSH key provided, exiting."
+      exit 1
+    fi
+    if [[ ! -f "${keyPath/#\~/$HOME}" ]]; then
+      echo "SSH key not found: $keyPath"
+      exit 1
+    fi
+  else
+    echo "Invalid choice, exiting."
+    exit 1
+  fi
+
+  export EC_SSH_KEY="-i $keyPath"
+  read -rp "Save '$keyPath' as default in $userConf? [y]es / [n]o (just this time): " _saveKey
+  case $_saveKey in
+    y|Y|yes)
+      mkdir -p "$HOME/.config/aws-tools"
+      echo "export EC_SSH_KEY=\"-i $keyPath\"" >> "$userConf"
+      echo "EC_SSH_KEY saved to $userConf"
+      ;;
+    *) echo "Using '$keyPath' for this session only." ;;
+  esac
 fi
-if [[ -e $HOME/.aws-tools/${VARS##*/}.local ]] ; then
-  source $HOME/.aws-tools/${VARS##*/}.local
+
+if [[ -z "$EC_IP_CONNECTION" ]]; then
+  export EC_IP_CONNECTION="private"
+  mkdir -p "$HOME/.config/aws-tools"
+  echo "export EC_IP_CONNECTION=\"private\"" >> "$userConf"
+  echo "EC_IP_CONNECTION defaulted to 'private' and saved to $userConf"
+fi
+
+# Usage output
+usage() {
+  echo "Usage: ${BASH_SOURCE[0]} [ -L | --forward SPEC ] [ -f | --fork ] [ -u | --user USER ] [ -h | --help ] [ public | private ] [ random | i-<id> | <number> | list ]
+        -L | --forward SPEC   SSH port forward, e.g. 8080:localhost:80 (may be repeated)
+        -f | --fork           Fork SSH into background (-f -N) after forwarding
+        -u | --user USER      SSH username (overrides EC_SSH_USER from config)
+        -h | --help           Show this help
+        public | private      Override EC_IP_CONNECTION from config"
+  exit 0
+}
+
+# Parse options (gnu-getopt loaded by tools.rc on macOS)
+_ARGS=$(getopt --name ecConnect \
+               --options 'L:fhu:' \
+               --longoptions 'forward:,fork,help,user:' -- "$@") || usage
+eval "set -- $_ARGS"
+
+_SSH_FORWARD_ARGS=""
+_SSH_FORK=0
+while true; do
+  case $1 in
+    -L|--forward) _SSH_FORWARD_ARGS="$_SSH_FORWARD_ARGS -L $2"; shift 2 ;;
+    -f|--fork)    _SSH_FORK=1; shift ;;
+    -u|--user)    EC_SSH_USER=$2; shift 2 ;;
+    -h|--help)    usage ;;
+    --)           shift; break ;;
+  esac
+done
+
+# Resolve EC_SSH_USER if not set by config or command line
+if [[ -z "$EC_SSH_USER" ]]; then
+  _localUser=$(whoami)
+  _iamUser=$(echo "$_callerArn" | awk -F'/' '{print $NF}')
+
+  echo "EC_SSH_USER is not set. Select the SSH username to use:"
+  echo "  1) Local system user: $_localUser"
+  echo "  2) IAM/Identity user: $_iamUser"
+  echo "  3) Custom entry"
+  read -rp "Choice [1/2/3]: " _userChoice
+  case $_userChoice in
+    1) EC_SSH_USER="$_localUser" ;;
+    2) EC_SSH_USER="$_iamUser" ;;
+    3) read -rp "Enter SSH username: " EC_SSH_USER
+       if [[ -z "$EC_SSH_USER" ]]; then
+         echo "No username provided, exiting."
+         exit 1
+       fi
+       ;;
+    *) echo "Invalid choice, exiting."; exit 1 ;;
+  esac
+
+  read -rp "Save '$EC_SSH_USER' as default in $userConf? [y]es / [n]o (just this time): " _saveUser
+  case $_saveUser in
+    y|Y|yes)
+      mkdir -p "$HOME/.config/aws-tools"
+      echo "export EC_SSH_USER=\"$EC_SSH_USER\"" >> "$userConf"
+      echo "EC_SSH_USER saved to $userConf"
+      ;;
+    *) echo "Using '$EC_SSH_USER' for this session only." ;;
+  esac
+  export EC_SSH_USER
 fi
 
 function getInstances() {
-    case $IpConnection in
+    case $EC_IP_CONNECTION in
         public)
-            runAwsCommand --output text ec2 describe-instances \
-            --filters Name=instance-state-name,Values=running Name=tag:"$TAG_KEY",Values="$TAG_VALUE" \
+            # shellcheck disable=SC2086
+            aws --output text ec2 describe-instances \
+            --filters Name=instance-state-name,Values=running Name=tag:"$EC_TAG_KEY",Values="$EC_TAG_VALUE" \
             --query "Reservations[*].Instances[*].[InstanceId,InstanceType,PublicIpAddress,PublicDnsName,Tags[?Key=='Name']|[0].Value]"
         ;;
         private)
-            runAwsCommand --output text ec2 describe-instances \
-            --filters Name=instance-state-name,Values=running Name=tag:"$TAG_KEY",Values="$TAG_VALUE" \
+            # shellcheck disable=SC2086
+            aws --output text ec2 describe-instances \
+            --filters Name=instance-state-name,Values=running Name=tag:"$EC_TAG_KEY",Values="$EC_TAG_VALUE" \
             --query "Reservations[*].Instances[*].[InstanceId,InstanceType,PrivateIpAddress,PrivateDnsName,Tags[?Key=='Name']|[0].Value]"
         ;;
         *)
-            echo "No IP Connection type defined (IpConnection == $IpConnection)"
-            exit
+            echo "No IP Connection type defined (EC_IP_CONNECTION == $EC_IP_CONNECTION)"
+            exit 1
+        ;;
     esac
-
 }
 
 function connectTo() {
     local host=$1
     local num=0
-    
+
     case $host in
-        hostNumber)
-            local hostNumber=$2
-        ;;
-        hostId)
-            local hostId=$2
-        ;;
+        hostNumber) local hostNumber=$2 ;;
+        hostId)     local hostId=$2 ;;
     esac
-    
+
     while IFS=$'\t' read -r InstanceId InstanceType PublicIpAddress PublicDnsName Name; do
         ((num = num + 1))
         if [[ $host == hostNumber ]] && [[ $hostNumber -eq $num ]]; then
             echo "you selected $hostNumber: $Name is $InstanceId (${InstanceType}) on $PublicDnsName (${PublicIpAddress})" && break
         elif [[ $host == hostId ]] && [[ $hostId == "$InstanceId" ]]; then
             echo "you selected $InstanceId: $Name (${InstanceType}) on $PublicDnsName (${PublicIpAddress})" && break
-        else
-            echo ""
         fi
     done < <(getInstances)
-    if [[ -n "$SSH_KEY" ]] ; then
-        PARAMS="$SSH_KEY"
-    fi
-    if [[ -n "$SSH_FORWARD" ]] ; then
-        PARAMS="$PARAMS $SSH_KEY"
-    fi
-    if [[ -n $PARAMS ]] ; then
-        ssh -tt $PARAMS "$SSH_USER"@"$PublicIpAddress" </dev/tty
+
+    local PARAMS=""
+    if [[ -n "$EC_SSH_KEY" ]];        then PARAMS="$EC_SSH_KEY"; fi
+    if [[ -n "$EC_SSH_FORWARD" ]];    then PARAMS="$PARAMS $EC_SSH_FORWARD"; fi
+    if [[ -n "$_SSH_FORWARD_ARGS" ]]; then PARAMS="$PARAMS $_SSH_FORWARD_ARGS"; fi
+
+    if [[ $_SSH_FORK -eq 1 ]]; then
+        # shellcheck disable=SC2086
+        ssh -f -N $PARAMS "$EC_SSH_USER"@"$PublicIpAddress"
+    elif [[ -n $PARAMS ]]; then
+        # shellcheck disable=SC2086
+        ssh -tt $PARAMS "$EC_SSH_USER"@"$PublicIpAddress" </dev/tty
     else
-        ssh -tt "$SSH_USER"@"$PublicIpAddress" </dev/tty
-    fi 
+        ssh -tt "$EC_SSH_USER"@"$PublicIpAddress" </dev/tty
+    fi
 }
 
 if [[ -z $1 ]] || [[ $1 == "public" ]] || [[ $1 == "private" ]]; then
     case $1 in
-        public)
-            IpConnection=public
-        ;;
-        private)
-            IpConnection=private
-        ;;
+        public)  EC_IP_CONNECTION=public ;;
+        private) EC_IP_CONNECTION=private ;;
     esac
-    echo "0:  Any host (rendom selection)"
+    num=0
+    echo "0:  Any host (random selection)"
     while IFS=$'\t' read -r InstanceId InstanceType PublicIpAddress PublicDnsName Name; do
         ((num = num + 1))
         echo "$num:  $Name is $InstanceId (${InstanceType}) on $PublicDnsName (${PublicIpAddress})"
@@ -85,9 +187,9 @@ if [[ -z $1 ]] || [[ $1 == "public" ]] || [[ $1 == "private" ]]; then
     echo "x:  Exit"
     while true; do
         read -rp 'Select host (0 for a random host, x to exit): ' hostNum
-        if [[ $hostNum -gt $num ]] && [[ $hostNum != "x" ]]; then
-            echo "Enter a vaule between 0 and $num or x"
-            elif [[ $hostNum == "x" ]]; then
+        if [[ $hostNum != "x" ]] && [[ $hostNum -gt $num ]]; then
+            echo "Enter a value between 0 and $num or x"
+        elif [[ $hostNum == "x" ]]; then
             echo "goodbye"
             exit 0
         else
@@ -101,15 +203,12 @@ if [[ -z $1 ]] || [[ $1 == "public" ]] || [[ $1 == "private" ]]; then
     done
 else
     case $2 in
-        public)
-            IpConnection=public
-        ;;
-        private)
-            IpConnection=private
-        ;;
+        public)  EC_IP_CONNECTION=public ;;
+        private) EC_IP_CONNECTION=private ;;
     esac
     case $1 in
         random)
+            num=0
             while IFS=$'\t' read -r InstanceId; do
                 ((num = num + 1))
             done < <(getInstances)
@@ -123,12 +222,8 @@ else
         ;;
         list)
             case $2 in
-                public)
-                    IpConnection=public
-                ;;
-                private)
-                    IpConnection=private
-                ;;
+                public)  EC_IP_CONNECTION=public ;;
+                private) EC_IP_CONNECTION=private ;;
             esac
             getInstances
         ;;

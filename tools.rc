@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# tools.rc — shared bootstrap for ec-tools scripts
+# Source this file, do not execute it directly.
+
+CONFNAME="aws-tools.conf"
+userConf="$HOME/.config/aws-tools/$CONFNAME"
+
+# Load configuration: /etc first, then ~/.config (user overrides system)
+if [[ -e "/etc/aws-tools/$CONFNAME" ]]; then
+  source "/etc/aws-tools/$CONFNAME"
+fi
+if [[ -e "$HOME/.config/aws-tools/$CONFNAME" ]]; then
+  source "$HOME/.config/aws-tools/$CONFNAME"
+fi
+
+# Verify AWS credentials are available and valid
+_callerIdentity=$(aws sts get-caller-identity --output text 2>/dev/null) || true
+if [[ -z "$_callerIdentity" ]]; then
+  echo "ERROR: No valid AWS credentials found."
+  echo "Configure credentials via one of:"
+  echo "  - AWS IAM user:        aws configure"
+  echo "  - SSO/Identity Center: aws sso login --profile <profile>"
+  echo "  - EC2 instance role:   attach an IAM role to this instance"
+  exit 1
+fi
+_callerArn=$(echo "$_callerIdentity" | awk '{print $2}')
+echo "Running as: $_callerArn"
+
+# Prompt for a value, save it to userConf, and export it
+function promptAndSave() {
+  local varName=$1
+  local prompt=$2
+  local value
+  read -rp "$prompt" value
+  if [[ -z "$value" ]]; then
+    echo "$varName is required, exiting."
+    exit 1
+  fi
+  mkdir -p "$HOME/.config/aws-tools"
+  echo "export $varName=\"$value\"" >> "$userConf"
+  echo "$varName saved to $userConf"
+  export "$varName=$value"
+}
+
+# Fetch EC2 instance metadata (IMDSv2)
+function getMetaData() {
+  local TOKEN
+  TOKEN=$(curl --max-time 10 --silent --request PUT "http://169.254.169.254/latest/api/token" \
+    --header "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+  if [[ -n $TOKEN ]]; then
+    local value
+    value=$(curl --max-time 10 --silent --fail \
+      --header "X-aws-ec2-metadata-token: $TOKEN" \
+      "http://169.254.169.254/latest/meta-data/$1") && echo "$value"
+  else
+    return 1
+  fi
+}
+
+# Resolve AWS_DEFAULT_REGION and AVAILABILITY_ZONE:
+# 1. conf file (already sourced above)
+# 2. instance metadata (if running on EC2)
+# 3. AWS profile config (~/.aws/config)
+# 4. prompt user
+if [[ -z "$AWS_DEFAULT_REGION" ]]; then
+  _az=$(getMetaData "placement/availability-zone") || true
+  if [[ -n "$_az" ]]; then
+    export AVAILABILITY_ZONE="$_az"
+    export AWS_DEFAULT_REGION="${_az:0:${#_az}-1}"
+  fi
+fi
+
+if [[ -z "$AWS_DEFAULT_REGION" ]]; then
+  _profile="${AWS_PROFILE:-default}"
+  _region=$(aws configure get region --profile "$_profile" 2>/dev/null) || true
+  if [[ -n "$_region" ]]; then
+    export AWS_DEFAULT_REGION="$_region"
+  fi
+fi
+
+if [[ -z "$AWS_DEFAULT_REGION" ]]; then
+  echo "AWS_DEFAULT_REGION could not be determined from metadata or AWS profile."
+  promptAndSave "AWS_DEFAULT_REGION" "Enter the AWS region (e.g. us-east-1): "
+fi
+
+if [[ -z "$AVAILABILITY_ZONE" ]]; then
+  echo "AVAILABILITY_ZONE could not be determined from metadata."
+  promptAndSave "AVAILABILITY_ZONE" "Enter the availability zone (e.g. ${AWS_DEFAULT_REGION}a): "
+fi
+
+# macOS ships BSD getopt which lacks --longoptions; use gnu-getopt if on Darwin
+if [[ "$(uname)" == "Darwin" ]]; then
+  if [[ -d /usr/local/opt/gnu-getopt/bin ]]; then
+    PATH="/usr/local/opt/gnu-getopt/bin:$PATH"     # Intel Mac
+  elif [[ -d /opt/homebrew/opt/gnu-getopt/bin ]]; then
+    PATH="/opt/homebrew/opt/gnu-getopt/bin:$PATH"  # Apple Silicon Mac
+  else
+    echo "gnu-getopt is required on macOS. Install with: brew install gnu-getopt"
+    exit 1
+  fi
+fi

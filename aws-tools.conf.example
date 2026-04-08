@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+# vim:ft=sh
+# aws-tools.conf.example
+# Copy to /etc/aws-tools/aws-tools.conf (system-wide) or
+#         ~/.config/aws-tools/aws-tools.conf (user, takes precedence)
+# and fill in your values.
+
+# =============================================================================
+# ecConnect settings
+# =============================================================================
+
+# EC_SSH_KEY
+#   The SSH private key to use when connecting to instances.
+#   Format: "-i /path/to/key.pem" (the full ssh -i flag value)
+#   If unset: ecConnect will list private keys found in ~/.ssh and prompt you
+#             to pick one or enter a path manually. You will be offered the
+#             option to save the choice here for future runs.
+#   Override: -u / --user flag is not applicable here; key selection is
+#             interactive only when unset.
+# EC_SSH_KEY="-i ~/.ssh/your-key.pem"
+
+# EC_SSH_FORWARD
+#   Static SSH port-forward spec(s) to always apply when connecting.
+#   Format: standard ssh -L / -R / -D syntax, e.g. "-L 8080:localhost:80"
+#   If unset: no persistent forwarding is configured.
+#   Override: -L / --forward flag on the command line (may be repeated and
+#             stacks on top of this value).
+EC_SSH_FORWARD=""
+
+# EC_SSH_USER
+#   The remote username for SSH connections.
+#   If unset: ecConnect prompts with three options:
+#             1) local whoami  2) IAM/Identity username  3) custom input
+#             You will be offered the option to save the choice here.
+#   Override: -u / --user flag on the command line.
+EC_SSH_USER=""
+
+# EC_TAG_KEY / EC_TAG_VALUE
+#   EC2 instance tag used to filter which instances are listed and connectable.
+#   EC_TAG_KEY:   the tag name  (e.g. Name, Environment, Project)
+#   EC_TAG_VALUE: the tag value; supports wildcards (e.g. "my-project-*")
+#   If unset: ecConnect will fail to list instances — both values are required.
+#   Override: no command-line override; edit this file to change the filter.
+EC_TAG_KEY=""
+EC_TAG_VALUE=""
+
+# EC_IP_CONNECTION
+#   Whether to connect via the instance's public or private IP address.
+#   Values: "private" | "public"
+#   If unset: defaults to "private" and saves that default here.
+#   Override: pass "public" or "private" as the first positional argument
+#             to ecConnect, e.g.: ecConnect public
+EC_IP_CONNECTION=private
+
+# =============================================================================
+# ecLaunch settings
+# =============================================================================
+
+# EC_INSTANCE_TYPE
+#   The EC2 instance type to launch (e.g. t3.medium, r5d.large).
+#   If unset: ecLaunch lists current-generation instance types and prompts.
+#             You will be offered the option to save the choice here.
+#   Override: -t / --type flag on the command line.
+EC_INSTANCE_TYPE=""
+
+# EC_LAUNCH_TEMPLATE_NAME
+#   The name of the EC2 launch template to use as the base configuration.
+#   The template ID is resolved automatically from this name at runtime.
+#   If unset: ecLaunch prompts for a name and shows available templates.
+#             You will be offered the option to save the choice here.
+#   Override: no command-line override; edit this file to change the template.
+EC_LAUNCH_TEMPLATE_NAME=""
+
+# EC_LAUNCH_TEMPLATE_VERSION
+#   The version of the launch template to use.
+#   '$Default' uses the template's default version (literal string, not a variable).
+#   If unset: defaults to '$Default'.
+#   Override: no command-line override; edit this file to pin a version number.
+EC_LAUNCH_TEMPLATE_VERSION='$Default'
+
+# EC_NAME_PREFIX
+#   Prefix applied to the Name tag of launched instances and volumes.
+#   The full name becomes: <EC_NAME_PREFIX><owner><suffix>
+#   e.g. "compute-" → "compute-jsmith-CPU"
+#   If unset: defaults to "compute-".
+#   Override: no command-line override; edit this file to change the prefix.
+EC_NAME_PREFIX=""
+
+# EC_PROJECT
+#   Value for the "project" and "Project" tags applied to instances and volumes.
+#   Used for cost allocation and resource tracking.
+#   If unset: ecLaunch exits with an error — this value is required.
+#   Override: -p / --project flag on the command line.
+EC_PROJECT=""
+
+# EC_LAUNCH_TEMPLATE_IGNORE
+#   Space-separated list of launch template name prefixes to exclude from the
+#   interactive selection list (glob-style, trailing * is stripped internally).
+#   Useful for hiding system-managed templates (e.g. Batch, AGC) from the menu.
+#   If unset: defaults to "Batch-lt* agc*".
+#   Override: no command-line override; edit this file to change the ignore list.
+# EC_LAUNCH_TEMPLATE_IGNORE="Batch-lt* agc*"
