@@ -152,7 +152,7 @@ _resolveVpc() {
       read -rp "Save '$_VPC_ID' as default in $userConf? [y]es / [n]o: " _saveVpc
       case $_saveVpc in
         y|Y|yes)
-          mkdir -p "$HOME/.config/aws-tools"
+          mkdir -p "$HOME/.config/ectools"
           echo "EC_VPC_ID=\"$_VPC_ID\"" >> "$userConf"
           echo "EC_VPC_ID saved to $userConf"
           ;;
@@ -235,7 +235,7 @@ function promptInstanceType() {
   read -rp "Save '$value' as default in $userConf? [y]es / [n]o (just this time): " saveChoice
   case $saveChoice in
     y|Y|yes)
-      mkdir -p "$HOME/.config/aws-tools"
+      mkdir -p "$HOME/.config/ectools"
       echo "EC_INSTANCE_TYPE=\"$value\"" >> "$userConf"
       echo "EC_INSTANCE_TYPE saved to $userConf"
       ;;
@@ -387,7 +387,7 @@ fi
 
 # Check for ecUserScript in the same directories as the conf file
 _USERDATA_ARG=""
-for _confDir in "/etc/aws-tools" "$HOME/.config/aws-tools"; do
+for _confDir in "/etc/ectools" "$HOME/.config/ectools"; do
   if [[ -f "$_confDir/ecUserScript" ]]; then
     _USERSCRIPT="$_confDir/ecUserScript"
   fi

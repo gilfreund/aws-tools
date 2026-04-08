@@ -50,7 +50,7 @@ if [[ -z "$EC_SSH_KEY" ]]; then
   read -rp "Save '$keyPath' as default in $userConf? [y]es / [n]o (just this time): " _saveKey
   case $_saveKey in
     y|Y|yes)
-      mkdir -p "$HOME/.config/aws-tools"
+      mkdir -p "$HOME/.config/ectools"
       echo "export EC_SSH_KEY=\"-i $keyPath\"" >> "$userConf"
       echo "EC_SSH_KEY saved to $userConf"
       ;;
@@ -60,7 +60,7 @@ fi
 
 if [[ -z "$EC_IP_CONNECTION" ]]; then
   export EC_IP_CONNECTION="private"
-  mkdir -p "$HOME/.config/aws-tools"
+  mkdir -p "$HOME/.config/ectools"
   echo "export EC_IP_CONNECTION=\"private\"" >> "$userConf"
   echo "EC_IP_CONNECTION defaulted to 'private' and saved to $userConf"
 fi
@@ -124,7 +124,7 @@ if [[ -z "$EC_SSH_USER" ]]; then
   read -rp "Save '$EC_SSH_USER' as default in $userConf? [y]es / [n]o (just this time): " _saveUser
   case $_saveUser in
     y|Y|yes)
-      mkdir -p "$HOME/.config/aws-tools"
+      mkdir -p "$HOME/.config/ectools"
       echo "export EC_SSH_USER=\"$EC_SSH_USER\"" >> "$userConf"
       echo "EC_SSH_USER saved to $userConf"
       ;;

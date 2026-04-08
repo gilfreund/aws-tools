@@ -14,7 +14,7 @@ setup() {
   export EC_SUBNET_FILTER="*rivate*"
   export AWS_DEFAULT_REGION="us-east-1"
   export _callerArn="arn:aws:iam::123456789012:user/testuser"
-  export userConf="$TEST_HOME/.config/aws-tools/ecTools.conf"
+  export userConf="$TEST_HOME/.config/ectools/ecTools.conf"
 }
 
 teardown() {

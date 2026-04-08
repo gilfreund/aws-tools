@@ -11,8 +11,8 @@ export PATH="$MOCKS_DIR:$PATH"
 setup_test_home() {
   TEST_HOME="$(mktemp -d)"
   export HOME="$TEST_HOME"
-  export userConf="$TEST_HOME/.config/aws-tools/ecTools.conf"
-  mkdir -p "$TEST_HOME/.ssh" "$TEST_HOME/.config/aws-tools"
+  export userConf="$TEST_HOME/.config/ectools/ecTools.conf"
+  mkdir -p "$TEST_HOME/.ssh" "$TEST_HOME/.config/ectools"
 }
 
 teardown_test_home() {
@@ -28,7 +28,7 @@ source_functions() {
   export _callerArn="arn:aws:iam::123456789012:user/testuser"
   export AWS_DEFAULT_REGION="us-east-1"
   export AVAILABILITY_ZONE="us-east-1a"
-  export userConf="${TEST_HOME:-$HOME}/.config/aws-tools/ecTools.conf"
+  export userConf="${TEST_HOME:-$HOME}/.config/ectools/ecTools.conf"
   # Source only function definitions by extracting them
   bash -c "
     source() { :; }  # stub source
@@ -38,7 +38,7 @@ source_functions() {
 
 # Write a minimal valid conf file
 write_test_conf() {
-  local confDir="${TEST_HOME}/.config/aws-tools"
+  local confDir="${TEST_HOME}/.config/ectools"
   mkdir -p "$confDir"
   cat > "$confDir/ecTools.conf" << 'EOF'
 EC_SSH_KEY="-i ~/.ssh/test.pem"

@@ -18,14 +18,14 @@ teardown() {
 # ---------------------------------------------------------------------------
 
 @test "tools.rc loads /etc config when present" {
-  mkdir -p "$TEST_HOME/etc/aws-tools"
-  echo 'EC_TEST_VAR="from-etc"' > "$TEST_HOME/etc/aws-tools/ecTools.conf"
+  mkdir -p "$TEST_HOME/etc/ectools"
+  echo 'EC_TEST_VAR="from-etc"' > "$TEST_HOME/etc/ectools/ecTools.conf"
 
   # Patch CONFNAME lookup paths
   run bash -c "
     CONFNAME=ecTools.conf
-    if [[ -e '$TEST_HOME/etc/aws-tools/ecTools.conf' ]]; then
-      source '$TEST_HOME/etc/aws-tools/ecTools.conf'
+    if [[ -e '$TEST_HOME/etc/ectools/ecTools.conf' ]]; then
+      source '$TEST_HOME/etc/ectools/ecTools.conf'
     fi
     echo \$EC_TEST_VAR
   "
@@ -34,13 +34,13 @@ teardown() {
 }
 
 @test "tools.rc user config overrides system config" {
-  mkdir -p "$TEST_HOME/etc/aws-tools" "$TEST_HOME/.config/aws-tools"
-  echo 'EC_TEST_VAR="from-etc"'    > "$TEST_HOME/etc/aws-tools/ecTools.conf"
-  echo 'EC_TEST_VAR="from-user"'   > "$TEST_HOME/.config/aws-tools/ecTools.conf"
+  mkdir -p "$TEST_HOME/etc/ectools" "$TEST_HOME/.config/ectools"
+  echo 'EC_TEST_VAR="from-etc"'    > "$TEST_HOME/etc/ectools/ecTools.conf"
+  echo 'EC_TEST_VAR="from-user"'   > "$TEST_HOME/.config/ectools/ecTools.conf"
 
   run bash -c "
-    source '$TEST_HOME/etc/aws-tools/ecTools.conf'
-    source '$TEST_HOME/.config/aws-tools/ecTools.conf'
+    source '$TEST_HOME/etc/ectools/ecTools.conf'
+    source '$TEST_HOME/.config/ectools/ecTools.conf'
     echo \$EC_TEST_VAR
   "
   [ "$status" -eq 0 ]
@@ -135,7 +135,7 @@ teardown() {
 
 @test "promptAndSave saves value to userConf" {
   write_test_conf
-  local confFile="$TEST_HOME/.config/aws-tools/ecTools.conf"
+  local confFile="$TEST_HOME/.config/ectools/ecTools.conf"
   local s; s="$(mktemp /tmp/t.XXXXXX.sh)"
   printf '#!/usr/bin/env bash\nuserConf="%s"\nmkdir -p "$(dirname "$userConf")"\necho '"'"'export TEST_VAR="saved"'"'"' >> "$userConf"\ngrep TEST_VAR "$userConf"\n' "$confFile" > "$s"
   run bash "$s"; rm -f "$s"

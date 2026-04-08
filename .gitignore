@@ -1,7 +1,6 @@
 .bashrc
 .aws-sam
 *.vars.local
-aws-tools.conf
 ecTools.conf
 
 # Created by https://www.toptal.com/developers/gitignore/api/git,ssh,linux,putty,nohup,python,pycharm,windows,database,powershell,jupyternotebooks

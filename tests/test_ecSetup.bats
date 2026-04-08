@@ -252,31 +252,31 @@ teardown() {
     TARGET_CONF=''
     if [[ \$EUID -eq 0 ]]; then
       TARGET_BIN='/usr/local/bin'
-      TARGET_CONF='/etc/aws-tools'
+      TARGET_CONF='/etc/ectools'
     else
       TARGET_BIN=\"\$HOME/bin\"
-      TARGET_CONF=\"\$HOME/.config/aws-tools\"
+      TARGET_CONF=\"\$HOME/.config/ectools\"
     fi
     echo \"\$TARGET_BIN|\$TARGET_CONF\"
   "
   [ "$status" -eq 0 ]
   [[ "$output" == *"/bin|"* ]]
-  [[ "$output" == *"/.config/aws-tools"* ]]
+  [[ "$output" == *"/.config/ectools"* ]]
 }
 
-@test "root user gets /usr/local/bin and /etc/aws-tools paths" {
+@test "root user gets /usr/local/bin and /etc/ectools paths" {
   run bash -c "
     # Simulate EUID=0 by checking the logic directly
     _euid=0
     if [[ \$_euid -eq 0 ]]; then
       TARGET_BIN='/usr/local/bin'
-      TARGET_CONF='/etc/aws-tools'
+      TARGET_CONF='/etc/ectools'
     else
       TARGET_BIN=\"\$HOME/bin\"
-      TARGET_CONF=\"\$HOME/.config/aws-tools\"
+      TARGET_CONF=\"\$HOME/.config/ectools\"
     fi
     echo \"\$TARGET_BIN|\$TARGET_CONF\"
   "
   [ "$status" -eq 0 ]
-  [ "$output" = "/usr/local/bin|/etc/aws-tools" ]
+  [ "$output" = "/usr/local/bin|/etc/ectools" ]
 }
