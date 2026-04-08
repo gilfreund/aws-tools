@@ -10,13 +10,14 @@ Interactively lists running EC2 instances filtered by tag and opens an SSH sessi
 
 ```
 Usage: ecConnect [ -L | --forward SPEC ] [ -f | --fork ] [ -u | --user USER ]
-                 [ -o | --owner OWNER ] [ -p | --profile PROFILE ] [ -h | --help ]
+                 [ -o | --owner OWNER ] [ -n | --dry-run ] [ -p | --profile PROFILE ] [ -h | --help ]
                  [ public | private | ssm ] [ random | i-<id> | <number> | list ]
 
   -L | --forward SPEC      SSH port forward, e.g. 8080:localhost:80 (may be repeated)
   -f | --fork              Fork SSH into background (-f -N, tunnel only)
   -u | --user USER         SSH username (overrides EC_SSH_USER from config)
   -o | --owner OWNER       Filter instances by owner tag value
+  -n | --dry-run           Print the ssh command that would be run without connecting
   -p | --profile PROFILE   AWS CLI profile to use (overrides EC_AWS_PROFILE)
   -h | --help              Show this help
   public | private | ssm   Override EC_IP_CONNECTION from config
@@ -38,7 +39,7 @@ architecture and accelerator. Launch template is optional.
 Usage: ecLaunch [ -t | --type TYPE ] [ -o | --owner OWNER ] [ -a | --ami AMI ]
                 [ -s | --subnet SUBNET-ID ] [ -v | --vpc VPC-ID ]
                 [ -T | --tag Key=Value ] [ --replace-tags ]
-                [ -p | --profile PROFILE ] [ --list-subnets ] [ -h | --help ]
+                [ -n | --dry-run ] [ -p | --profile PROFILE ] [ --list-subnets ] [ -h | --help ]
 
   -t | --type TYPE         EC2 instance type (e.g. t3.medium); supports multi-value in conf
   -o | --owner OWNER       Owner tag value (default: current user)
@@ -47,6 +48,7 @@ Usage: ecLaunch [ -t | --type TYPE ] [ -o | --owner OWNER ] [ -a | --ami AMI ]
   -v | --vpc VPC-ID        VPC ID to use (overrides EC_VPC_ID / EC_VPC_FILTER)
   -T | --tag Key=Value     Additional tag to apply (may be repeated; appends to EC_EXTRA_TAGS)
   --replace-tags           Replace EC_EXTRA_TAGS entirely with tags from -T flags
+  -n | --dry-run           Print the aws run-instances command without executing it
   -p | --profile PROFILE   AWS CLI profile to use (overrides EC_AWS_PROFILE)
   --list-subnets           List available subnets matching the current filter and exit
   -h | --help              Show this help

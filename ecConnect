@@ -67,11 +67,12 @@ fi
 
 # Usage output
 usage() {
-  echo "Usage: ${BASH_SOURCE[0]} [ -L | --forward SPEC ] [ -f | --fork ] [ -u | --user USER ] [ -o | --owner OWNER ] [ -p | --profile PROFILE ] [ -h | --help ] [ public | private | ssm ] [ random | i-<id> | <number> | list ]
+  echo "Usage: ${BASH_SOURCE[0]} [ -L | --forward SPEC ] [ -f | --fork ] [ -u | --user USER ] [ -o | --owner OWNER ] [ -n | --dry-run ] [ -p | --profile PROFILE ] [ -h | --help ] [ public | private | ssm ] [ random | i-<id> | <number> | list ]
         -L | --forward SPEC      SSH port forward, e.g. 8080:localhost:80 (may be repeated)
         -f | --fork              Fork SSH into background (-f -N) after forwarding
         -u | --user USER         SSH username (overrides EC_SSH_USER from config)
         -o | --owner OWNER       Filter instances by owner tag value
+        -n | --dry-run           Print the ssh command that would be run without connecting
         -p | --profile PROFILE   AWS config profile to use (overrides EC_AWS_PROFILE from config)
         -h | --help              Show this help
         public | private | ssm   Override EC_IP_CONNECTION from config"
@@ -80,19 +81,21 @@ usage() {
 
 # Parse options (gnu-getopt loaded by tools.rc on macOS)
 _ARGS=$(getopt --name ecConnect \
-               --options 'L:fhu:o:p:' \
-               --longoptions 'forward:,fork,help,user:,owner:,profile:' -- "$@") || usage
+               --options 'L:fhu:o:np:' \
+               --longoptions 'forward:,fork,help,user:,owner:,dry-run,profile:' -- "$@") || usage
 eval "set -- $_ARGS"
 
 _SSH_FORWARD_ARGS=""
 _SSH_FORK=0
 _OWNER_FILTER=""
+_DRY_RUN=0
 while true; do
   case $1 in
     -L|--forward) _SSH_FORWARD_ARGS="$_SSH_FORWARD_ARGS -L $2"; shift 2 ;;
     -f|--fork)    _SSH_FORK=1; shift ;;
     -u|--user)    EC_SSH_USER=$2; shift 2 ;;
     -o|--owner)   _OWNER_FILTER=$2; shift 2 ;;
+    -n|--dry-run) _DRY_RUN=1; shift ;;
     -p|--profile) shift 2 ;;  # already handled in tools.rc, skip
     -h|--help)    usage ;;
     --)           shift; break ;;
@@ -191,6 +194,18 @@ function connectTo() {
     if [[ -n "$EC_SSH_KEY" ]];        then PARAMS="$EC_SSH_KEY"; fi
     if [[ -n "$EC_SSH_FORWARD" ]];    then PARAMS="$PARAMS $EC_SSH_FORWARD"; fi
     if [[ -n "$_SSH_FORWARD_ARGS" ]]; then PARAMS="$PARAMS $_SSH_FORWARD_ARGS"; fi
+
+    if [[ $_DRY_RUN -eq 1 ]]; then
+        if [[ $EC_IP_CONNECTION == ssm ]]; then
+            local _proxy="aws ssm start-session --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p"
+            echo "[dry-run] ssh -tt $PARAMS -o ProxyCommand='$_proxy' $EC_SSH_USER@$InstanceId"
+        elif [[ $_SSH_FORK -eq 1 ]]; then
+            echo "[dry-run] ssh -f -N $PARAMS $EC_SSH_USER@$PublicIpAddress"
+        else
+            echo "[dry-run] ssh -tt $PARAMS $EC_SSH_USER@$PublicIpAddress"
+        fi
+        return
+    fi
 
     if [[ $EC_IP_CONNECTION == ssm ]]; then
         # SSH over SSM — requires aws-session-manager-plugin installed

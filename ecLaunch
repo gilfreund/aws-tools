@@ -62,7 +62,7 @@ fi
 
 # Usage output
 usage() {
-  echo "Usage: ${BASH_SOURCE[0]} [ -t | --type TYPE ] [ -o | --owner OWNER ] [ -a | --ami AMI ] [ -s | --subnet SUBNET-ID ] [ -v | --vpc VPC-ID ] [ -T | --tag Key=Value ] [ --replace-tags ] [ -p | --profile PROFILE ] [ --list-subnets ] [ -h | --help ]
+  echo "Usage: ${BASH_SOURCE[0]} [ -t | --type TYPE ] [ -o | --owner OWNER ] [ -a | --ami AMI ] [ -s | --subnet SUBNET-ID ] [ -v | --vpc VPC-ID ] [ -T | --tag Key=Value ] [ --replace-tags ] [ -n | --dry-run ] [ -p | --profile PROFILE ] [ --list-subnets ] [ -h | --help ]
         -t | --type TYPE         EC2 instance type (e.g. t3.medium)
         -o | --owner OWNER       Owner tag value (default: current user)
         -a | --ami AMI           AMI ID or '2023' for latest Amazon Linux 2023 (default: 2023)
@@ -70,6 +70,7 @@ usage() {
         -v | --vpc VPC-ID        VPC ID to use (overrides EC_VPC_ID and EC_VPC_FILTER)
         -T | --tag Key=Value     Additional tag to apply (may be repeated; appends to EC_EXTRA_TAGS by default)
         --replace-tags           Replace EC_EXTRA_TAGS entirely with tags from -T flags
+        -n | --dry-run           Print the aws run-instances command without executing it
         -p | --profile PROFILE   AWS config profile to use (overrides EC_AWS_PROFILE from config)
         --list-subnets           List available subnets matching the current filter and exit
         -h | --help              Show this help"
@@ -166,12 +167,13 @@ _resolveVpc() {
 
 # Parse options (gnu-getopt loaded by tools.rc on macOS)
 ARGS=$(getopt --name ecLaunch \
-              --options 't:o:a:hp:s:v:T:' \
-              --longoptions 'type:,owner:,ami:,help,profile:,subnet:,vpc:,tag:,replace-tags,list-subnets' -- "$@")
+              --options 't:o:a:hp:s:v:T:n' \
+              --longoptions 'type:,owner:,ami:,help,profile:,subnet:,vpc:,tag:,replace-tags,dry-run,list-subnets' -- "$@")
 if [[ "$?" -gt 0 ]]; then usage; fi
 eval "set -- $ARGS"
 _CLI_TAGS=""
 _REPLACE_TAGS=0
+_DRY_RUN=0
 while true; do
     case $1 in
       -t|--type)         EC_INSTANCE_TYPE=$2; shift 2 ;;
@@ -181,6 +183,7 @@ while true; do
       -v|--vpc)          _VPC_OVERRIDE=$2;    shift 2 ;;
       -T|--tag)          _CLI_TAGS="${_CLI_TAGS:+$_CLI_TAGS,}$2"; shift 2 ;;
       --replace-tags)    _REPLACE_TAGS=1; shift ;;
+      -n|--dry-run)      _DRY_RUN=1; shift ;;
       --list-subnets)    _resolveVpc; _listSubnets; exit 0 ;;
       -p|--profile)      shift 2 ;;
       -h|--help)         usage ;;
@@ -420,6 +423,21 @@ if [[ -n "$_extraTagsRaw" ]]; then
 fi
 
 # shellcheck disable=SC2086
+if [[ $_DRY_RUN -eq 1 ]]; then
+  echo "[dry-run] aws ec2 run-instances $extraParams \\"
+  echo "  ${_LAUNCHTEMPLATEARG:+$_LAUNCHTEMPLATEARG \\}"
+  echo "  ${_USERDATA_ARG:+$_USERDATA_ARG \\}"
+  echo "  --image-id \"$_IMAGEID\" \\"
+  echo "  --instance-type \"$EC_INSTANCE_TYPE\" \\"
+  echo "  --subnet-id \"$subnet\" --no-associate-public-ip-address \\"
+  echo "  --hibernation-options Configured=true \\"
+  echo "  --block-device-mappings \"Ebs={VolumeSize=30},DeviceName=/dev/xvda\" \\"
+  echo "  --tag-specifications \\"
+  echo "    \"ResourceType=instance,Tags=[{Key=Name,Value=${EC_NAME_PREFIX}${_OWNERTAG}${_NAMESUFFIX}},{Key=owner,Value=$_OWNERTAG},{Key=creator,Value=$_OWNERTAG},{Key=project,Value=$_PROJECT},{Key=Project,Value=$_PROJECT}${_extraTagJson}]\" \\"
+  echo "    \"ResourceType=volume,Tags=[{Key=Name,Value=${EC_NAME_PREFIX}${_OWNERTAG}${_NAMESUFFIX}},{Key=owner,Value=$_OWNERTAG},{Key=creator,Value=$_OWNERTAG},{Key=project,Value=$_PROJECT},{Key=Project,Value=$_PROJECT}${_extraTagJson}]\""
+  exit 0
+fi
+
 InstanceID=$(aws --output text ec2 run-instances $extraParams \
   ${_LAUNCHTEMPLATEARG:+$_LAUNCHTEMPLATEARG} \
   ${_USERDATA_ARG:+$_USERDATA_ARG} \
