@@ -48,12 +48,13 @@ EC_LAUNCH_TEMPLATE_VERSION="${EC_LAUNCH_TEMPLATE_VERSION:-\$Default}"
 
 # Usage output
 usage() {
-  echo "Usage: ${BASH_SOURCE[0]} [ -t | --type TYPE ] [ -o | --owner OWNER ] [ -p | --project PROJECT ] [ -a | --ami AMI ] [ -h | --help ]
-        -t | --type TYPE      EC2 instance type (e.g. t3.medium)
-        -o | --owner OWNER    Owner tag value (default: current user)
-        -p | --project NAME   Project tag value (required)
-        -a | --ami AMI        AMI ID or '2023' for latest Amazon Linux 2023 (default: 2023)
-        -h | --help           Show this help"
+  echo "Usage: ${BASH_SOURCE[0]} [ -t | --type TYPE ] [ -o | --owner OWNER ] [ -p | --project PROJECT ] [ -a | --ami AMI ] [ -P | --profile PROFILE ] [ -h | --help ]
+        -t | --type TYPE         EC2 instance type (e.g. t3.medium)
+        -o | --owner OWNER       Owner tag value (default: current user)
+        -p | --project NAME      Project tag value (required)
+        -a | --ami AMI           AMI ID or '2023' for latest Amazon Linux 2023 (default: 2023)
+        -P | --profile PROFILE   AWS config profile to use (overrides EC_AWS_PROFILE from config)
+        -h | --help              Show this help"
   exit 0
 }
 
@@ -77,8 +78,8 @@ done
 
 # Parse options (gnu-getopt loaded by tools.rc on macOS)
 ARGS=$(getopt --name ecLaunch \
-              --options 't:o:p:a:h' \
-              --longoptions 'type:,owner:,project:,ami:,help' -- "$@")
+              --options 't:o:p:a:hP:' \
+              --longoptions 'type:,owner:,project:,ami:,help,profile:' -- "$@")
 if [[ "$?" -gt 0 ]]; then usage; fi
 eval "set -- $ARGS"
 while true; do
@@ -87,6 +88,7 @@ while true; do
       -o|--owner)   _OWNERTAG=$2;        shift 2 ;;
       -p|--project) _PROJECT=$2;         shift 2 ;;
       -a|--ami)     _IMAGEID=$2;         shift 2 ;;
+      -P|--profile) shift 2 ;;  # already handled in tools.rc, skip
       -h|--help)    usage ;;
       --)           shift; break ;;
       *)            echo "option $1 is unknown"; usage ;;

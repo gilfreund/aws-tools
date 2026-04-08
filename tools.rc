@@ -13,6 +13,25 @@ if [[ -e "$HOME/.config/aws-tools/$CONFNAME" ]]; then
   source "$HOME/.config/aws-tools/$CONFNAME"
 fi
 
+# Apply AWS profile: command-line -P/--profile takes precedence over
+# EC_AWS_PROFILE from conf, which takes precedence over AWS_PROFILE env var.
+# Pre-parse $@ for -P/--profile before getopt runs, so all aws calls use it.
+for _arg in "$@"; do
+  case $_arg in
+    -P|--profile) _nextIsProfile=1 ;;
+    *)
+      if [[ "${_nextIsProfile:-0}" -eq 1 ]]; then
+        EC_AWS_PROFILE="$_arg"
+        _nextIsProfile=0
+      fi
+      ;;
+  esac
+done
+if [[ -n "$EC_AWS_PROFILE" ]]; then
+  export AWS_PROFILE="$EC_AWS_PROFILE"
+  echo "Using AWS profile: $AWS_PROFILE"
+fi
+
 # Verify AWS credentials are available and valid
 _callerIdentity=$(aws sts get-caller-identity --output text 2>/dev/null) || true
 if [[ -z "$_callerIdentity" ]]; then

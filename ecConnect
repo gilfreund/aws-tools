@@ -57,19 +57,20 @@ fi
 
 # Usage output
 usage() {
-  echo "Usage: ${BASH_SOURCE[0]} [ -L | --forward SPEC ] [ -f | --fork ] [ -u | --user USER ] [ -h | --help ] [ public | private ] [ random | i-<id> | <number> | list ]
-        -L | --forward SPEC   SSH port forward, e.g. 8080:localhost:80 (may be repeated)
-        -f | --fork           Fork SSH into background (-f -N) after forwarding
-        -u | --user USER      SSH username (overrides EC_SSH_USER from config)
-        -h | --help           Show this help
-        public | private      Override EC_IP_CONNECTION from config"
+  echo "Usage: ${BASH_SOURCE[0]} [ -L | --forward SPEC ] [ -f | --fork ] [ -u | --user USER ] [ -P | --profile PROFILE ] [ -h | --help ] [ public | private | ssm ] [ random | i-<id> | <number> | list ]
+        -L | --forward SPEC      SSH port forward, e.g. 8080:localhost:80 (may be repeated)
+        -f | --fork              Fork SSH into background (-f -N) after forwarding
+        -u | --user USER         SSH username (overrides EC_SSH_USER from config)
+        -P | --profile PROFILE   AWS config profile to use (overrides EC_AWS_PROFILE from config)
+        -h | --help              Show this help
+        public | private | ssm   Override EC_IP_CONNECTION from config"
   exit 0
 }
 
 # Parse options (gnu-getopt loaded by tools.rc on macOS)
 _ARGS=$(getopt --name ecConnect \
-               --options 'L:fhu:' \
-               --longoptions 'forward:,fork,help,user:' -- "$@") || usage
+               --options 'L:fhu:P:' \
+               --longoptions 'forward:,fork,help,user:,profile:' -- "$@") || usage
 eval "set -- $_ARGS"
 
 _SSH_FORWARD_ARGS=""
@@ -79,6 +80,7 @@ while true; do
     -L|--forward) _SSH_FORWARD_ARGS="$_SSH_FORWARD_ARGS -L $2"; shift 2 ;;
     -f|--fork)    _SSH_FORK=1; shift ;;
     -u|--user)    EC_SSH_USER=$2; shift 2 ;;
+    -P|--profile) shift 2 ;;  # already handled in tools.rc, skip
     -h|--help)    usage ;;
     --)           shift; break ;;
   esac
@@ -132,6 +134,13 @@ function getInstances() {
             --filters Name=instance-state-name,Values=running Name=tag:"$EC_TAG_KEY",Values="$EC_TAG_VALUE" \
             --query "Reservations[*].Instances[*].[InstanceId,InstanceType,PrivateIpAddress,PrivateDnsName,Tags[?Key=='Name']|[0].Value]"
         ;;
+        ssm)
+            # SSM connects by instance ID; IP columns are unused but kept for consistent field count
+            # shellcheck disable=SC2086
+            aws --output text ec2 describe-instances \
+            --filters Name=instance-state-name,Values=running Name=tag:"$EC_TAG_KEY",Values="$EC_TAG_VALUE" \
+            --query "Reservations[*].Instances[*].[InstanceId,InstanceType,InstanceId,InstanceId,Tags[?Key=='Name']|[0].Value]"
+        ;;
         *)
             echo "No IP Connection type defined (EC_IP_CONNECTION == $EC_IP_CONNECTION)"
             exit 1
@@ -162,7 +171,38 @@ function connectTo() {
     if [[ -n "$EC_SSH_FORWARD" ]];    then PARAMS="$PARAMS $EC_SSH_FORWARD"; fi
     if [[ -n "$_SSH_FORWARD_ARGS" ]]; then PARAMS="$PARAMS $_SSH_FORWARD_ARGS"; fi
 
-    if [[ $_SSH_FORK -eq 1 ]]; then
+    if [[ $EC_IP_CONNECTION == ssm ]]; then
+        # SSH over SSM — requires aws-session-manager-plugin installed
+        local _proxy="aws ssm start-session --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p"
+        PARAMS="$PARAMS -o ProxyCommand='$_proxy'"
+        if [[ $_SSH_FORK -eq 1 ]]; then
+            # shellcheck disable=SC2086
+            ssh -f -N $PARAMS "$EC_SSH_USER"@"$InstanceId" 2>/tmp/ecConnect_ssm_err
+        else
+            # shellcheck disable=SC2086
+            ssh -tt $PARAMS "$EC_SSH_USER"@"$InstanceId" </dev/tty 2>/tmp/ecConnect_ssm_err
+        fi
+        local _rc=$?
+        if [[ $_rc -ne 0 ]] && grep -q "TargetNotConnected\|not connected\|Connection closed by UNKNOWN" /tmp/ecConnect_ssm_err 2>/dev/null; then
+            echo ""
+            echo "ERROR: Could not connect to $InstanceId via Session Manager."
+            echo ""
+            echo "Possible causes:"
+            echo "  1. SSM Agent is not running on the instance."
+            echo "     Fix: sudo systemctl start amazon-ssm-agent"
+            echo "  2. The instance has no IAM role with SSM permissions."
+            echo "     Fix: attach the AmazonSSMManagedInstanceCore policy to the instance role."
+            echo "  3. The instance cannot reach the SSM endpoints (no internet/VPC endpoint)."
+            echo "     Fix: ensure VPC endpoints for ssm, ssmmessages, ec2messages exist, or allow outbound HTTPS."
+            echo "  4. The instance is stopped, terminated, or not yet fully started."
+            echo "     Fix: verify the instance is running: aws ec2 describe-instances --instance-ids $InstanceId"
+            echo "  5. Your IAM identity lacks ssm:StartSession permission for this instance."
+            echo "     Fix: check your IAM policy includes ssm:StartSession on the target resource."
+            rm -f /tmp/ecConnect_ssm_err
+            exit 1
+        fi
+        rm -f /tmp/ecConnect_ssm_err
+    elif [[ $_SSH_FORK -eq 1 ]]; then
         # shellcheck disable=SC2086
         ssh -f -N $PARAMS "$EC_SSH_USER"@"$PublicIpAddress"
     elif [[ -n $PARAMS ]]; then
@@ -173,10 +213,11 @@ function connectTo() {
     fi
 }
 
-if [[ -z $1 ]] || [[ $1 == "public" ]] || [[ $1 == "private" ]]; then
+if [[ -z $1 ]] || [[ $1 == "public" ]] || [[ $1 == "private" ]] || [[ $1 == "ssm" ]]; then
     case $1 in
         public)  EC_IP_CONNECTION=public ;;
         private) EC_IP_CONNECTION=private ;;
+        ssm)     EC_IP_CONNECTION=ssm ;;
     esac
     num=0
     echo "0:  Any host (random selection)"
@@ -205,6 +246,7 @@ else
     case $2 in
         public)  EC_IP_CONNECTION=public ;;
         private) EC_IP_CONNECTION=private ;;
+        ssm)     EC_IP_CONNECTION=ssm ;;
     esac
     case $1 in
         random)
@@ -224,6 +266,7 @@ else
             case $2 in
                 public)  EC_IP_CONNECTION=public ;;
                 private) EC_IP_CONNECTION=private ;;
+                ssm)     EC_IP_CONNECTION=ssm ;;
             esac
             getInstances
         ;;

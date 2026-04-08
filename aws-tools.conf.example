@@ -6,6 +6,16 @@
 # and fill in your values.
 
 # =============================================================================
+# Shared settings
+# =============================================================================
+
+# EC_AWS_PROFILE
+#   AWS CLI named profile to use for all API calls.
+#   If unset: uses AWS_PROFILE env var if set, otherwise the default profile.
+#   Override: -P / --profile flag on the command line of either script.
+# EC_AWS_PROFILE=""
+
+# =============================================================================
 # ecConnect settings
 # =============================================================================
 
@@ -45,11 +55,14 @@ EC_TAG_KEY=""
 EC_TAG_VALUE=""
 
 # EC_IP_CONNECTION
-#   Whether to connect via the instance's public or private IP address.
-#   Values: "private" | "public"
+#   Whether to connect via the instance's public IP, private IP, or
+#   SSH over AWS Session Manager (no open inbound ports required).
+#   Values: "private" | "public" | "ssm"
+#   ssm requires the AWS Session Manager plugin:
+#     https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html
 #   If unset: defaults to "private" and saves that default here.
-#   Override: pass "public" or "private" as the first positional argument
-#             to ecConnect, e.g.: ecConnect public
+#   Override: pass "public", "private", or "ssm" as the first positional
+#             argument to ecConnect, e.g.: ecConnect ssm
 EC_IP_CONNECTION=private
 
 # =============================================================================
