@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# Mock aws CLI for testing — reads responses from AWS_MOCK_RESPONSES env var
+# Format: AWS_MOCK_RESPONSES="subcommand:response|subcommand:response"
+# Special: AWS_MOCK_EXIT_CODE sets the exit code (default 0)
+
+_cmd="$*"
+_exit="${AWS_MOCK_EXIT_CODE:-0}"
+
+# Match against registered responses
+if [[ -n "${AWS_MOCK_RESPONSES:-}" ]]; then
+  IFS='|' read -ra _entries <<< "$AWS_MOCK_RESPONSES"
+  for _entry in "${_entries[@]}"; do
+    _pattern="${_entry%%:*}"
+    _response="${_entry#*:}"
+    if [[ "$_cmd" == *"$_pattern"* ]]; then
+      echo "$_response"
+      exit "$_exit"
+    fi
+  done
+fi
+
+# Default fallback responses for common commands
+case "$_cmd" in
+  *"sts get-caller-identity"*)
+    echo -e "123456789012\tarn:aws:iam::123456789012:user/testuser\ttestuser"
+    exit 0
+    ;;
+  *"ec2 describe-instances"*)
+    echo -e "i-1234567890abcdef0\tt3.medium\t10.0.1.10\tip-10-0-1-10.ec2.internal\ttest-instance"
+    exit 0
+    ;;
+  *"ec2 describe-subnets"*)
+    echo -e "subnet-aabbccdd\tus-east-1a\t10.0.1.0/24\tprivate-subnet-1"
+    exit 0
+    ;;
+  *"ec2 describe-vpcs"*)
+    echo -e "vpc-11223344\t10.0.0.0/16\ttest-vpc\tFalse"
+    exit 0
+    ;;
+  *"ec2 describe-launch-templates"*)
+    echo "lt-0062b4ab254a12bf2"
+    exit 0
+    ;;
+  *"ec2 describe-instance-types"*)
+    echo -e "x86_64\t4\t8192\t0\tNone\t0\tunsupported\tNone\tNone\t0\t0\tNone\tNone\t0\t0\tNone\tNone\t0\thvm"
+    exit 0
+    ;;
+  *"ssm get-parameter"*)
+    echo "ami-0abcdef1234567890"
+    exit 0
+    ;;
+  *"configure get region"*)
+    echo "us-east-1"
+    exit 0
+    ;;
+  *)
+    echo "mock aws: unhandled command: $_cmd" >&2
+    exit "${AWS_MOCK_EXIT_CODE:-0}"
+    ;;
+esac

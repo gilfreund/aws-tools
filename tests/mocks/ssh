@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Mock ssh for testing
+echo "mock ssh: $*"
+exit "${SSH_MOCK_EXIT_CODE:-0}"

@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Mock curl for testing EC2 metadata
+# Returns CURL_MOCK_TOKEN for token requests, CURL_MOCK_METADATA for data requests
+if [[ "$*" == *"api/token"* ]]; then
+  echo "${CURL_MOCK_TOKEN:-mock-imds-token}"
+  exit 0
+fi
+if [[ "$*" == *"meta-data"* ]]; then
+  echo "${CURL_MOCK_METADATA:-us-east-1a}"
+  exit "${CURL_MOCK_EXIT:-0}"
+fi
+exit 0
