@@ -1,0 +1,198 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  IAM Identity Center (SSO) permission sets for ecTools users.
+  Grants the minimum permissions required to run ecConnect and ecLaunch.
+  Deploy this in the management account (or delegated admin account) where
+  IAM Identity Center is enabled.
+
+# ---------------------------------------------------------------------------
+# Parameters
+# ---------------------------------------------------------------------------
+Parameters:
+  IdentityCenterInstanceArn:
+    Type: String
+    Description: >
+      ARN of the IAM Identity Center instance.
+      Find it in the IAM Identity Center console under Settings.
+    AllowedPattern: "arn:aws:sso:::instance/ssoins-[a-z0-9]+"
+
+  TargetAccountId:
+    Type: String
+    Description: AWS account ID where ecConnect and ecLaunch will be used.
+    AllowedPattern: "[0-9]{12}"
+
+  SessionDurationHours:
+    Type: Number
+    Default: 8
+    MinValue: 1
+    MaxValue: 12
+    Description: Duration (hours) for SSO sessions before re-authentication is required.
+
+# ---------------------------------------------------------------------------
+# Resources
+# ---------------------------------------------------------------------------
+Resources:
+
+  # --------------------------------------------------------------------------
+  # Permission set: ecConnect
+  # Read-only — list instances, verify identity, optionally start SSM sessions
+  # --------------------------------------------------------------------------
+  PermissionSetEcConnect:
+    Type: AWS::SSO::PermissionSet
+    Properties:
+      Name: ecTools-ecConnect
+      Description: >
+        Minimum permissions to run ecConnect: list EC2 instances,
+        verify caller identity, and optionally connect via Session Manager.
+      InstanceArn: !Ref IdentityCenterInstanceArn
+      SessionDuration: !Sub "PT${SessionDurationHours}H"
+      InlinePolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: VerifyIdentity
+            Effect: Allow
+            Action: sts:GetCallerIdentity
+            Resource: "*"
+          - Sid: ListInstances
+            Effect: Allow
+            Action: ec2:DescribeInstances
+            Resource: "*"
+          - Sid: SSMTunnel
+            Effect: Allow
+            Action: ssm:StartSession
+            Resource: "*"
+            Condition:
+              StringEquals:
+                ssm:resourceTag/Name: "*"
+
+  # --------------------------------------------------------------------------
+  # Permission set: ecLaunch
+  # Read + write — discover resources, resolve AMIs, launch instances
+  # --------------------------------------------------------------------------
+  PermissionSetEcLaunch:
+    Type: AWS::SSO::PermissionSet
+    Properties:
+      Name: ecTools-ecLaunch
+      Description: >
+        Minimum permissions to run ecLaunch: discover VPCs/subnets/templates,
+        resolve AMIs, and launch EC2 instances.
+      InstanceArn: !Ref IdentityCenterInstanceArn
+      SessionDuration: !Sub "PT${SessionDurationHours}H"
+      InlinePolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: VerifyIdentity
+            Effect: Allow
+            Action: sts:GetCallerIdentity
+            Resource: "*"
+          - Sid: DiscoverNetwork
+            Effect: Allow
+            Action:
+              - ec2:DescribeVpcs
+              - ec2:DescribeSubnets
+            Resource: "*"
+          - Sid: ResolveLaunchTemplate
+            Effect: Allow
+            Action: ec2:DescribeLaunchTemplates
+            Resource: "*"
+          - Sid: ResolveInstanceType
+            Effect: Allow
+            Action: ec2:DescribeInstanceTypes
+            Resource: "*"
+          - Sid: ResolveAMI
+            Effect: Allow
+            Action:
+              - ec2:DescribeImages
+              - ssm:GetParameter
+            Resource: "*"
+          - Sid: LaunchInstance
+            Effect: Allow
+            Action: ec2:RunInstances
+            Resource: "*"
+          - Sid: PassInstanceRole
+            Effect: Allow
+            Action: iam:PassRole
+            Resource: "*"
+            Condition:
+              StringEquals:
+                iam:PassedToService: ec2.amazonaws.com
+
+  # --------------------------------------------------------------------------
+  # Permission set: ecTools (combined — for users who run both scripts)
+  # --------------------------------------------------------------------------
+  PermissionSetEcTools:
+    Type: AWS::SSO::PermissionSet
+    Properties:
+      Name: ecTools-FullAccess
+      Description: >
+        Combined permissions for users who run both ecConnect and ecLaunch.
+      InstanceArn: !Ref IdentityCenterInstanceArn
+      SessionDuration: !Sub "PT${SessionDurationHours}H"
+      InlinePolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: VerifyIdentity
+            Effect: Allow
+            Action: sts:GetCallerIdentity
+            Resource: "*"
+          - Sid: ListInstances
+            Effect: Allow
+            Action: ec2:DescribeInstances
+            Resource: "*"
+          - Sid: SSMTunnel
+            Effect: Allow
+            Action: ssm:StartSession
+            Resource: "*"
+          - Sid: DiscoverNetwork
+            Effect: Allow
+            Action:
+              - ec2:DescribeVpcs
+              - ec2:DescribeSubnets
+            Resource: "*"
+          - Sid: ResolveLaunchTemplate
+            Effect: Allow
+            Action: ec2:DescribeLaunchTemplates
+            Resource: "*"
+          - Sid: ResolveInstanceType
+            Effect: Allow
+            Action: ec2:DescribeInstanceTypes
+            Resource: "*"
+          - Sid: ResolveAMI
+            Effect: Allow
+            Action:
+              - ec2:DescribeImages
+              - ssm:GetParameter
+            Resource: "*"
+          - Sid: LaunchInstance
+            Effect: Allow
+            Action: ec2:RunInstances
+            Resource: "*"
+          - Sid: PassInstanceRole
+            Effect: Allow
+            Action: iam:PassRole
+            Resource: "*"
+            Condition:
+              StringEquals:
+                iam:PassedToService: ec2.amazonaws.com
+
+# ---------------------------------------------------------------------------
+# Outputs
+# ---------------------------------------------------------------------------
+Outputs:
+  PermissionSetEcConnectArn:
+    Description: ARN of the ecConnect permission set
+    Value: !GetAtt PermissionSetEcConnect.PermissionSetArn
+    Export:
+      Name: !Sub "${AWS::StackName}-ecConnect-PermissionSetArn"
+
+  PermissionSetEcLaunchArn:
+    Description: ARN of the ecLaunch permission set
+    Value: !GetAtt PermissionSetEcLaunch.PermissionSetArn
+    Export:
+      Name: !Sub "${AWS::StackName}-ecLaunch-PermissionSetArn"
+
+  PermissionSetEcToolsArn:
+    Description: ARN of the combined ecTools permission set
+    Value: !GetAtt PermissionSetEcTools.PermissionSetArn
+    Export:
+      Name: !Sub "${AWS::StackName}-ecTools-PermissionSetArn"
