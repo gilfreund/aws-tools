@@ -56,6 +56,44 @@ Usage: ecLaunch [ -t | --type TYPE ] [ -o | --owner OWNER ] [ -a | --ami AMI ]
 
 Built-in tags applied to all instances and volumes: `Name`, `owner`, `creator`, `project`, `Project`.
 
+## Tags
+
+### ecConnect — instance filtering
+
+ecConnect uses EC2 tags to filter which instances are listed and connectable:
+
+| Config variable | Purpose |
+|---|---|
+| `EC_TAG_KEY` | Tag name to filter on (e.g. `Name`, `Environment`) |
+| `EC_TAG_VALUE` | Tag value to match; supports wildcards (e.g. `my-project-*`) |
+
+The `-o` / `--owner` flag adds a second filter on the `owner` tag, limiting results to instances launched by a specific user.
+
+### ecLaunch — tags applied on launch
+
+The following tags are applied automatically to every launched instance and its volumes:
+
+| Tag | Value | Source |
+|---|---|---|
+| `Name` | `<EC_NAME_PREFIX><owner><-CPU\|-GPU>` | built-in |
+| `owner` | owner tag value (default: `whoami`) | `-o` flag or `whoami` |
+| `creator` | same as owner | built-in |
+| `project` | project name | `EC_PROJECT` in conf |
+| `Project` | same as project (capitalised variant) | built-in |
+
+Additional tags can be set via `EC_EXTRA_TAGS` in the conf file or the `-T` flag on the command line:
+
+```bash
+# Set default extra tags in conf
+EC_EXTRA_TAGS="env=dev,team=platform,cost-center=123"
+
+# Append tags at runtime (stacks on top of EC_EXTRA_TAGS)
+ecLaunch -t t3.medium -T ticket=PROJ-42
+
+# Replace conf tags entirely for this run
+ecLaunch -t t3.medium -T env=prod --replace-tags
+```
+
 ### ecSetup
 
 Installs scripts and configures the conf file interactively.
