@@ -100,6 +100,7 @@ All settings are passed as environment variables:
 | `integration_aws.bats` | AWS credentials, IAM permissions, VPC/subnet availability, AMI resolution |
 | `integration_ecConnect.bats` | Instance listing, `--dry-run` output, owner tag filtering, SSM plugin presence |
 | `integration_ecLaunch.bats` | `--dry-run` resolves AMI/subnet/VPC/tags; live launch and tag verification (skipped by default) |
+| `integration_config.bats` | Config file variations, system vs user conf precedence, CLI flag overrides for all major variables |
 
 ### GitHub Actions
 

@@ -75,3 +75,35 @@ wait_for_running() {
   local instanceId="$1"
   aws ec2 wait instance-running --instance-ids "$instanceId"
 }
+
+# ---------------------------------------------------------------------------
+# Config file helpers for config-variation tests
+# ---------------------------------------------------------------------------
+
+# Create a temp conf dir and return its path
+make_conf_dir() {
+  local dir; dir=$(mktemp -d)
+  echo "$dir"
+}
+
+# Write a minimal ecTools.conf to a directory
+write_conf() {
+  local dir="$1"
+  shift
+  # remaining args are KEY=VALUE pairs to write
+  mkdir -p "$dir"
+  local confFile="$dir/ecTools.conf"
+  printf '#!/usr/bin/env bash\n' > "$confFile"
+  for pair in "$@"; do
+    echo "${pair%%=*}=\"${pair#*=}\"" >> "$confFile"
+  done
+  echo "$confFile"
+}
+
+# Source a conf file and run ecLaunch/ecConnect with it as the user conf
+# Usage: run_with_conf <confDir> <script> [args...]
+run_with_conf() {
+  local confDir="$1"; shift
+  local script="$1"; shift
+  HOME="$confDir" bash "$script" "$@"
+}
