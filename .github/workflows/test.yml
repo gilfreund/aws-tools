@@ -5,10 +5,11 @@ on:
     branches: ["**"]
   push:
     branches: [master]
+  workflow_dispatch:
 
 jobs:
   bats:
-    name: bats test suite
+    name: unit tests
     runs-on: ubuntu-latest
 
     steps:
@@ -20,5 +21,37 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y bats
 
-      - name: Run tests
+      - name: Run unit tests
         run: bats --tap tests/test_*.bats
+
+  integration:
+    name: integration tests
+    runs-on: ubuntu-latest
+    # Runs on workflow_dispatch or when commit message contains [integration]
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.head_commit.message, '[integration]')
+    environment: aws-integration  # configure AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY in this environment
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install bats-core
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y bats
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Run integration tests
+        env:
+          SKIP_LAUNCH_TESTS: "1"
+          IT_INSTANCE_TYPE: t3.micro
+          IT_PROJECT: ectools-integration-test
+        run: bats --tap tests/integration_*.bats
