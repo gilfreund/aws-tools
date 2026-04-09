@@ -22,6 +22,14 @@ Parameters:
     Type: String
     Default: "10.30.1.0/24"
 
+  PublicSubnetACidr:
+    Type: String
+    Default: "10.20.101.0/24"
+
+  PublicSubnetBCidr:
+    Type: String
+    Default: "10.30.101.0/24"
+
 Resources:
 
   # ---------------------------------------------------------------------------
@@ -39,6 +47,19 @@ Resources:
         - Key: purpose
           Value: ectools-integration-test
 
+  IgwA:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: ectools-test-igw-a
+
+  IgwAAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VpcA
+      InternetGatewayId: !Ref IgwA
+
   PrivateSubnetA:
     Type: AWS::EC2::Subnet
     Properties:
@@ -52,19 +73,54 @@ Resources:
         - Key: purpose
           Value: ectools-integration-test
 
-  RouteTableA:
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcA
+      CidrBlock: !Ref PublicSubnetACidr
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: ectools-test-public-a
+        - Key: purpose
+          Value: ectools-integration-test
+
+  PublicRouteTableA:
     Type: AWS::EC2::RouteTable
     Properties:
       VpcId: !Ref VpcA
       Tags:
         - Key: Name
-          Value: ectools-test-rt-a
+          Value: ectools-test-public-rt-a
+
+  PublicRouteA:
+    Type: AWS::EC2::Route
+    DependsOn: IgwAAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTableA
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !Ref IgwA
+
+  PublicSubnetARouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTableA
+
+  PrivateRouteTableA:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VpcA
+      Tags:
+        - Key: Name
+          Value: ectools-test-private-rt-a
 
   SubnetARouteAssoc:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       SubnetId: !Ref PrivateSubnetA
-      RouteTableId: !Ref RouteTableA
+      RouteTableId: !Ref PrivateRouteTableA
 
   # ---------------------------------------------------------------------------
   # VPC B
@@ -81,6 +137,19 @@ Resources:
         - Key: purpose
           Value: ectools-integration-test
 
+  IgwB:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: ectools-test-igw-b
+
+  IgwBAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VpcB
+      InternetGatewayId: !Ref IgwB
+
   PrivateSubnetB:
     Type: AWS::EC2::Subnet
     Properties:
@@ -94,19 +163,54 @@ Resources:
         - Key: purpose
           Value: ectools-integration-test
 
-  RouteTableB:
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcB
+      CidrBlock: !Ref PublicSubnetBCidr
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: ectools-test-public-b
+        - Key: purpose
+          Value: ectools-integration-test
+
+  PublicRouteTableB:
     Type: AWS::EC2::RouteTable
     Properties:
       VpcId: !Ref VpcB
       Tags:
         - Key: Name
-          Value: ectools-test-rt-b
+          Value: ectools-test-public-rt-b
+
+  PublicRouteB:
+    Type: AWS::EC2::Route
+    DependsOn: IgwBAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTableB
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !Ref IgwB
+
+  PublicSubnetBRouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicRouteTableB
+
+  PrivateRouteTableB:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VpcB
+      Tags:
+        - Key: Name
+          Value: ectools-test-private-rt-b
 
   SubnetBRouteAssoc:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       SubnetId: !Ref PrivateSubnetB
-      RouteTableId: !Ref RouteTableB
+      RouteTableId: !Ref PrivateRouteTableB
 
 Outputs:
   VpcAId:
@@ -128,3 +232,13 @@ Outputs:
     Value: !Ref PrivateSubnetB
     Export:
       Name: !Sub "${AWS::StackName}-PrivateSubnetBId"
+
+  PublicSubnetAId:
+    Value: !Ref PublicSubnetA
+    Export:
+      Name: !Sub "${AWS::StackName}-PublicSubnetAId"
+
+  PublicSubnetBId:
+    Value: !Ref PublicSubnetB
+    Export:
+      Name: !Sub "${AWS::StackName}-PublicSubnetBId"

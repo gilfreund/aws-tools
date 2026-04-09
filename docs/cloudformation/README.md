@@ -22,7 +22,7 @@ needed to run ecConnect and ecLaunch.
 
 ```bash
 aws cloudformation deploy \
-  --template-file cloudformation/identity-center.yaml \
+  --template-file docs/cloudformation/identity-center.yaml \
   --stack-name ectools-identity-center \
   --parameter-overrides \
     IdentityCenterInstanceArn=arn:aws:sso:::instance/ssoins-XXXXXXXXXX \

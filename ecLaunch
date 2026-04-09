@@ -422,11 +422,16 @@ if [[ -n "$_extraTagsRaw" ]]; then
   _extraTagJson=",$_extraTagJson"
 fi
 
-# shellcheck disable=SC2086
-if [[ $_DRY_RUN -eq 1 ]]; then
+# Resolve instance profile for SSM access
+_INSTANCEPROFILE_ARG=""
+if [[ -n "${EC_INSTANCE_PROFILE:-}" ]]; then
+  _INSTANCEPROFILE_ARG="--iam-instance-profile Name=$EC_INSTANCE_PROFILE"
+  echo "Using instance profile: $EC_INSTANCE_PROFILE"
+fi
   echo "[dry-run] aws ec2 run-instances $extraParams \\"
   echo "  ${_LAUNCHTEMPLATEARG:+$_LAUNCHTEMPLATEARG \\}"
   echo "  ${_USERDATA_ARG:+$_USERDATA_ARG \\}"
+  echo "  ${_INSTANCEPROFILE_ARG:+$_INSTANCEPROFILE_ARG \\}"
   echo "  --image-id \"$_IMAGEID\" \\"
   echo "  --instance-type \"$EC_INSTANCE_TYPE\" \\"
   echo "  --subnet-id \"$subnet\" --no-associate-public-ip-address \\"

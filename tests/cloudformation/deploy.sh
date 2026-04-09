@@ -2,7 +2,7 @@
 # deploy.sh — deploy ecTools integration test stacks
 #
 # Usage:
-#   ./cloudformation/testing/deploy.sh [--multi-vpc] [--ec2] [--identity-center] [--destroy]
+#   ./tests/cloudformation/deploy.sh [--multi-vpc] [--ec2] [--identity-center] [--destroy]
 #
 # Options:
 #   --multi-vpc          Also deploy the multi-VPC stack (3 VPCs total)
@@ -35,6 +35,7 @@ KEY_PAIR=""
 ACCOUNT_ID=""
 SSO_INSTANCE_ARN=""
 SSO_USER_ID=""
+ALLOWED_SSH_CIDR="0.0.0.0/0"
 
 # ---------------------------------------------------------------------------
 # Parse arguments
@@ -49,6 +50,7 @@ while [[ $# -gt 0 ]]; do
     --account)           ACCOUNT_ID="$2"; shift 2 ;;
     --sso-instance)      SSO_INSTANCE_ARN="$2"; shift 2 ;;
     --sso-user-id)       SSO_USER_ID="$2"; shift 2 ;;
+    --ssh-cidr)          ALLOWED_SSH_CIDR="$2"; shift 2 ;;
     --destroy)           DESTROY=1; shift ;;
     -h|--help)
       echo "Usage: $0 [--multi-vpc] [--ec2] [--identity-center] [--destroy]"
